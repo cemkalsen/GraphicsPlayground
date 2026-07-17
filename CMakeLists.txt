@@ -10,11 +10,15 @@ set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 add_subdirectory(external/glfw)
 
-# executable
 add_executable(Renderer
     src/main.cpp
     external/glad/src/glad.c
-)
+ "src/shader.h")
 
 target_include_directories(Renderer PRIVATE external/glad/include)
 target_link_libraries(Renderer PRIVATE glfw opengl32)
+
+add_custom_command(TARGET Renderer POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/src
+    $<TARGET_FILE_DIR:Renderer>/src)
