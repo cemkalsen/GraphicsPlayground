@@ -15,8 +15,13 @@ add_executable(Renderer
     external/glad/src/glad.c
  "src/shader.h")
 
-target_include_directories(Renderer PRIVATE external/glad/include)
+target_include_directories(Renderer PRIVATE
+    external/glad/include
+    external/glm
+)
+
 target_link_libraries(Renderer PRIVATE glfw opengl32)
+
 
 add_custom_command(TARGET Renderer POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
