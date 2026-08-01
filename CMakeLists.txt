@@ -13,7 +13,7 @@ add_subdirectory(external/glfw)
 add_executable(Renderer
     src/main.cpp
     external/glad/src/glad.c
- "src/shader.h")
+ "src/shader.h" "src/camera.h")
 
 target_include_directories(Renderer PRIVATE
     external/glad/include

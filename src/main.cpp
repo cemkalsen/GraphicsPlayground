@@ -5,6 +5,7 @@
 #include "stb_image.h"
 
 #include "shader.h"
+#include "camera.h"
 #include <filesystem>
 
 #include <glm/glm.hpp>
@@ -27,11 +28,21 @@ float lastY = 300;
 float yaw = 0.0f;
 float pitch = 0.0f;
 
+float fov = 45.0f;
+
 double firstMouse = true;
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
 	glViewport(0, 0, width, height);
+}
+
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
+{
+	fov -= (float)yoffset;
+
+	if (fov < 1.0f)  fov = 1.0f;
+	if (fov > 45.0f) fov = 45.0f;
 }
 
 void mouse_callback(GLFWwindow* window, double xpos, double ypos)
@@ -120,6 +131,7 @@ int main()
 
 	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	glfwSetCursorPosCallback(window, mouse_callback);
+	glfwSetScrollCallback(window, scroll_callback);
 
 	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
 	{
@@ -294,7 +306,7 @@ glm::vec3 cubePositions[] = {
 		glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
 
 		glm::mat4 projection;
-		projection = glm::perspective(glm::radians(45.0f), 800.0f / 600.f, 0.1f, 100.0f);
+		projection = glm::perspective(glm::radians(fov), 800.0f / 600.f, 0.1f, 100.0f);
 		unsigned int projectionLOc = glGetUniformLocation(ourShader.ID, "projection");
 		glUniformMatrix4fv(projectionLOc, 1, GL_FALSE, glm::value_ptr(projection));
 
