@@ -113,7 +113,16 @@ public:
 private:
 	void updateCameraVectors()
 	{
+		glm::vec3 front;
 
+
+		front.x = cos(glm::radians(Pitch)) * cos(glm::radians(Yaw));
+		front.y = sin(glm::radians(Pitch));
+		front.z = cos(glm::radians(Pitch)) * sin(glm::radians(Yaw));
+
+		Front = glm::normalize(front);
+		Right = glm::normalize(glm::cross(Front, WorldUp));
+		Up = glm::normalize(glm::cross(Right, Front));
 	}
 };
 
