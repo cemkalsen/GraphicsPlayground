@@ -14,7 +14,7 @@ uniform mat4 model;
 
 void main()
 {
-    gl_Position = projection * view * model * vec4(aPos.x,aPos.y,aPos.z, 1.0);
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
     Normal = mat3(transpose(inverse(model))) * aNormal;
 
     vec4 worldPosition = model * vec4(aPos,1.0f);
