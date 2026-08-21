@@ -22,6 +22,7 @@ public:
 	std::string directory;
 	bool gammaCorrection;
 
+
 	Model(std::string const& path, bool gamma = false) : gammaCorrection(gamma)
 	{
 		loadModel(path);
@@ -33,6 +34,23 @@ public:
 		{
 			meshes[i].Draw(shader);
 		}
+	}
+
+	void DrawOutlined(Shader& outlineS)
+	{
+
+		glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+		glStencilMask(0x00);
+		glDisable(GL_DEPTH_TEST);
+
+		for (unsigned int i = 0; i < meshes.size(); ++i)
+		{
+			meshes[i].Draw(outlineS);
+		}
+
+		glStencilMask(0xFF);
+		glStencilFunc(GL_ALWAYS, 1, 0xFF);
+		glEnable(GL_DEPTH_TEST);
 	}
 
 private:

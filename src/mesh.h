@@ -47,6 +47,8 @@ public:
 
 	void Draw(Shader& shader)
 	{
+		shader.use();
+
 		unsigned int diffuseNr = 1;
 		unsigned int specularNr = 1;
 		unsigned int heightNr = 1;
