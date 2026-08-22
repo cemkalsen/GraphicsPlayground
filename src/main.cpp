@@ -160,7 +160,7 @@ unsigned int loadTexture(const char* path)
 int main()
 {
 	glfwInit();
-	
+
 
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -200,10 +200,6 @@ int main()
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init("#version 330");
 
-	glEnable(GL_DEPTH_TEST);
-	glEnable(GL_STENCIL_TEST);
-	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-	glEnable(GL_CULL_FACE);
 
 	float cubeVertices[] = {
 		// Back face
@@ -249,7 +245,7 @@ int main()
 		 -0.5f,  0.5f, -0.5f,  0.0f, 1.0f, // top-left
 		 -0.5f,  0.5f,  0.5f,  0.0f, 0.0f  // bottom-left        
 	};
-	float planeVertices[] = 
+	float planeVertices[] =
 	{
 		 5.0f, -0.5f,  5.0f,  2.0f, 0.0f,
 		-5.0f, -0.5f,  5.0f,  0.0f, 0.0f,
@@ -269,6 +265,28 @@ int main()
 		0.0f,  0.5f,  0.0f,  0.0f,  0.0f,
 		1.0f, -0.5f,  0.0f,  1.0f,  1.0f,
 		1.0f,  0.5f,  0.0f,  1.0f,  0.0f
+	};
+
+	float quadVertices[] = {
+		// positions   // texCoords
+		-1.0f,  1.0f,  0.0f, 1.0f,
+		-1.0f, -1.0f,  0.0f, 0.0f,
+		 1.0f, -1.0f,  1.0f, 0.0f,
+
+		-1.0f,  1.0f,  0.0f, 1.0f,
+		 1.0f, -1.0f,  1.0f, 0.0f,
+		 1.0f,  1.0f,  1.0f, 1.0f
+	};
+
+	float uiQuad[] =
+	{
+		-0.3f, 1.0f, 0.0f, 1.0f,
+		-0.3f, 0.4f, 0.0f, 0.0f,
+		0.3f, 0.4f, 1.0f, 0.0f,
+
+		-0.3f, 1.0f, 0.0f, 1.0f,
+		0.3f, 0.4f, 1.0f, 0.0f,
+		0.3f, 1.0f, 1.0f, 1.0f
 	};
 
 	std::vector<glm::vec3> vegetation;
@@ -312,10 +330,60 @@ int main()
 	glEnableVertexAttribArray(1);
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
 
+	unsigned int quadVAO, quadVBO;
+	glGenVertexArrays(1, &quadVAO);
+	glBindVertexArray(quadVAO);
+	glGenBuffers(1, &quadVBO);
+	glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(0));
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2*sizeof(float)));
+
+	unsigned int uiVAO, uiVBO;
+	glGenVertexArrays(1, &uiVAO);
+	glBindVertexArray(uiVAO);
+	glGenBuffers(1, &uiVBO);
+	glBindBuffer(GL_ARRAY_BUFFER, uiVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(uiQuad), &uiQuad, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(0));
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+	
+
+	unsigned int frameBuffer;
+	glGenFramebuffers(1, &frameBuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
+
+	unsigned int textureColorBuffer;
+	glGenTextures(1, &textureColorBuffer);
+	glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 800, 600, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureColorBuffer, 0);
+
+	unsigned int rbo;
+	glGenRenderbuffers(1, &rbo);
+	glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, 800, 600);
+	glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
+	
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
 	Shader cubeShader("assets/shaders/cubeshader.vert", "assets/shaders/cubeshader.frag");
 	Shader simpleShader("assets/shaders/simpleshader.vert", "assets/shaders/simpleshader.frag");
 	Shader outlineShader("assets/shaders/outline.vert", "assets/shaders/outline.frag");
-
+	Shader screenShader("assets/shaders/screenshader.vert", "assets/shaders/screenshader.frag");
 	Model ourModel("assets/models/sponza/sponza.obj");
 
 	stbi_set_flip_vertically_on_load(true);
@@ -323,11 +391,14 @@ int main()
 	Model backPack("assets/models/backpack/backpack.obj");
 	
 	unsigned int floorTexture = loadTexture("assets/textures/metal.png");
-	unsigned int cubeTexture = loadTexture("assets/textures/marble.jpg");
+	unsigned int cubeTexture = loadTexture("assets/textures/container.jpg");
 	unsigned int vegTexture = loadTexture("assets/textures/window.png");
 
 	simpleShader.use();
 	simpleShader.setInt("texture1", 0);
+
+	screenShader.use();
+	screenShader.setInt("screenTexture", 0);
 
 	cubeShader.use();
 	cubeShader.setFloat("shininess", 64.0f);
@@ -347,7 +418,12 @@ int main()
 
 		processInput(window);
 
+		glEnable(GL_DEPTH_TEST);
+		glEnable(GL_STENCIL_TEST);
+		glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
+		glEnable(GL_CULL_FACE);
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
 		glStencilMask(0xFF);
 		glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -464,10 +540,27 @@ int main()
 			backPack.DrawOutlined(outlineShader);
 		}
 
+		// POST
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+
+		screenShader.use();
+		glBindVertexArray(quadVAO);
+		glDisable(GL_DEPTH_TEST);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+
+		//glBindVertexArray(uiVAO);
+		//glDrawArrays(GL_TRIANGLES, 0, 6);
+
 		// IMGUI RENDER
 
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
 
 		glfwSwapBuffers(window);
 	}
