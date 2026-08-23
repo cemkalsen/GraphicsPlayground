@@ -43,7 +43,6 @@ bool backpackoutline = false;
 bool escPressed = false;
 bool blinn = false;
 bool sharpen = false;
-bool gamma = false;
 
 unsigned int textureColorBuffer, textureColorBuffer2;
 unsigned int rbo, rbo2;
@@ -56,7 +55,7 @@ void resizeFramebufferAttachments(int width, int height)
 	}
 
 	glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
 
 	glBindRenderbuffer(GL_RENDERBUFFER, rbo);
 	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
@@ -65,7 +64,7 @@ void resizeFramebufferAttachments(int width, int height)
 	glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
 	glBindTexture(GL_TEXTURE_2D, textureColorBuffer2);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, MIRROR_WIDTH, MIRROR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, MIRROR_WIDTH, MIRROR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
 
 	glBindRenderbuffer(GL_RENDERBUFFER, rbo2);
 	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, MIRROR_WIDTH, MIRROR_HEIGHT);
@@ -419,7 +418,7 @@ int main()
 	//unsigned int textureColorBuffer;
 	glGenTextures(1, &textureColorBuffer);
 	glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 800, 600, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 800, 600, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -450,7 +449,7 @@ int main()
 	//unsigned int textureColorBuffer2;
 	glGenTextures(1, &textureColorBuffer2);
 	glBindTexture(GL_TEXTURE_2D, textureColorBuffer2);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 240, 180, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 240, 180, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -476,11 +475,11 @@ int main()
 	Shader screenShader("assets/shaders/screenshader.vert", "assets/shaders/screenshader.frag");
 	Shader mirrorShader("assets/shaders/mirror.vert", "assets/shaders/mirror.frag");
 
-	Model ourModel("assets/models/sponza/sponza.obj", true);
+	Model ourModel("assets/models/sponza/sponza.obj");
 
 	stbi_set_flip_vertically_on_load(true);
 
-	Model backPack("assets/models/backpack/backpack.obj",true);
+	Model backPack("assets/models/backpack/backpack.obj");
 	
 	unsigned int floorTexture = loadTexture("assets/textures/metal.png", true);
 	unsigned int cubeTexture = loadTexture("assets/textures/container.jpg", true);
@@ -492,7 +491,6 @@ int main()
 	screenShader.use();
 	screenShader.setInt("screenTexture", 0);
 	screenShader.setBool("sharpen", sharpen);
-	screenShader.setBool("gammaEnabled", gamma);
 
 	mirrorShader.use();
 	mirrorShader.setInt("mirrorTexture", 0);
@@ -568,7 +566,6 @@ int main()
 		ImGui::Checkbox("Backpack outline", &backpackoutline);
 		ImGui::Checkbox("Blinn-Phong", &blinn);
 		ImGui::Checkbox("Sharpen", &sharpen);
-		ImGui::Checkbox("Gamma", &gamma);
 
 		ImGui::Separator();
 		ImGui::Text("Directional Light");
@@ -587,7 +584,7 @@ int main()
 		glEnable(GL_CULL_FACE);
 		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
 		glStencilMask(0xFF);
-		glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+		glClearColor(0.01f, 0.01f, 0.01f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 		glStencilMask(0x00);
 
@@ -717,7 +714,7 @@ int main()
 		glViewport(0, 0, 240, 180);
 
 		glStencilMask(0xFF);
-		glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+		glClearColor(0.01f, 0.01f, 0.01f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 		glStencilMask(0x00);
 
@@ -835,12 +832,11 @@ int main()
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glViewport(0,0,frameBufferWidth,frameBufferHeight);
-		glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+		glClearColor(0.01f, 0.01f, 0.01f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		screenShader.use();
 		screenShader.setBool("sharpen", sharpen);
-		screenShader.setBool("gammaEnabled", gamma);
 		glBindVertexArray(quadVAO);
 		glDisable(GL_DEPTH_TEST);
 		glActiveTexture(GL_TEXTURE0);

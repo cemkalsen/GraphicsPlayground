@@ -20,10 +20,9 @@ public:
 	std::vector<Texture> textures_loaded;
 	std::vector<Mesh> meshes;
 	std::string directory;
-	bool gammaCorrection;
 
 
-	Model(std::string const& path, bool gamma = false) : gammaCorrection(gamma)
+	Model(std::string const& path)
 	{
 		loadModel(path);
 	}
@@ -245,7 +244,7 @@ private:
 			if (!skip)
 			{
 				Texture texture;
-				texture.id = textureFromFile(str.C_Str(), this->directory, (gammaCorrection && (typeName == "texture_diffuse")));
+				texture.id = textureFromFile(str.C_Str(), this->directory, (typeName == "texture_diffuse"));
 				texture.type = typeName;
 				texture.path = str.C_Str();
 				textures.push_back(texture);
