@@ -58,9 +58,11 @@ target_link_libraries(Renderer PRIVATE
     assimp::assimp
 )
 
-# Copy runtime assets next to Renderer.exe
-add_custom_command(TARGET Renderer POST_BUILD
+# Copy runtime assets whenever Renderer is built
+add_custom_target(copy_assets
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/assets
-        $<TARGET_FILE_DIR:Renderer>/assets
+        "${CMAKE_SOURCE_DIR}/assets"
+        "$<TARGET_FILE_DIR:Renderer>/assets"
 )
+
+add_dependencies(Renderer copy_assets)

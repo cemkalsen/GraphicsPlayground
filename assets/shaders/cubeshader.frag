@@ -6,7 +6,7 @@ in vec3 Normal;
 in vec3 Pos;
 in vec2 TexCoords;
 uniform vec3 viewPos;
-
+uniform bool blinn;
 
 uniform sampler2D texture_diffuse1;
 uniform sampler2D texture_specular1;
@@ -66,7 +66,13 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
     float diff = max(dot(lightDir, normal),0.0);
     
     vec3 reflectDir = reflect(-lightDir, normal);
-    float spec = pow(max(dot(reflectDir, viewDir), 0.0), shininess);
+    vec3 halfwayDir = normalize(lightDir + viewDir);
+
+    float spec = 0.0;
+    if(blinn)
+        spec = pow(max(dot(normal, halfwayDir), 0.0), shininess* 4.0);
+    else
+        spec = pow(max(dot(reflectDir, viewDir), 0.0), shininess);
 
     vec3 ambient = light.ambient * texture(texture_diffuse1, TexCoords).rgb;
     vec3 diffuse = light.diffuse * texture(texture_diffuse1, TexCoords).rgb * diff;
@@ -84,7 +90,13 @@ vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir)
     float diff = max(dot(lightDir, normal),0.0);
     
     vec3 reflectDir = reflect(-lightDir, normal);
-    float spec = pow(max(dot(reflectDir, viewDir), 0.0), shininess);
+    vec3 halfwayDir = normalize(lightDir + viewDir);
+
+    float spec = 0.0;
+    if(blinn)
+        spec = pow(max(dot(normal, halfwayDir), 0.0), shininess* 4.0);
+    else
+        spec = pow(max(dot(reflectDir, viewDir), 0.0), shininess);
 
     float distance = length(light.position - fragPos);
     float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * distance * distance);
@@ -107,7 +119,13 @@ vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir)
     float diff = max(dot(lightDir, normal),0.0);
     
     vec3 reflectDir = reflect(-lightDir, normal);
-    float spec = pow(max(dot(reflectDir, viewDir), 0.0), shininess);
+    vec3 halfwayDir = normalize(lightDir + viewDir);
+
+    float spec = 0.0;
+    if(blinn)
+        spec = pow(max(dot(normal, halfwayDir), 0.0), shininess* 4.0);
+    else
+        spec = pow(max(dot(reflectDir, viewDir), 0.0), shininess);
 
     float distance = length(light.position - fragPos);
     float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * distance * distance);
@@ -145,8 +163,8 @@ void main()
     vec3 result = CalcDirLight(dirLight, norm, viewDir);
     //vec3 result = vec3(0.0f);
 
-   // for(int i = 0; i < NR_POINT_LIGHTS; ++i)
-     //   result += CalcPointLight(pointLights[i], norm, Pos, viewDir);
+    for(int i = 0; i < NR_POINT_LIGHTS; ++i)
+        result += CalcPointLight(pointLights[i], norm, Pos, viewDir);
 
     //result += CalcSpotLight( spotLight, norm, Pos, viewDir);
 

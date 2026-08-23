@@ -5,6 +5,8 @@ out vec4 FragColor;
 in vec2 TexCoords;
 
 uniform sampler2D screenTexture;
+uniform bool sharpen;
+uniform bool gammaEnabled;
 
 const float offset = 1.0f / 300.0f;
 
@@ -44,6 +46,13 @@ void main()
     for(int i = 0; i < 9; ++i)
         col += sampleTex[i] * kernel[i];
 
+    if(sharpen)
+	    FragColor = vec4(col, 1.0);
+    else
+        FragColor = texture(screenTexture, TexCoords);
 
-	FragColor = vec4(col, 1.0);
+    float gamma = 2.2;
+
+    if(gammaEnabled)
+        FragColor.rgb = pow(FragColor.rgb, vec3(1.0/gamma)); 
 }
