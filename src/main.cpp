@@ -228,7 +228,7 @@ struct SceneResources
 
 };
 
-void RenderScene(SceneResources& source, glm::mat4& view, glm::mat4& projection, glm::vec3 viewPos)
+void RenderScene(const SceneResources& source, const glm::mat4& view, const glm::mat4& projection, const glm::vec3 viewPos)
 {
 	glEnable(GL_DEPTH_TEST);
 	glEnable(GL_STENCIL_TEST);
@@ -259,6 +259,7 @@ void RenderScene(SceneResources& source, glm::mat4& view, glm::mat4& projection,
 	model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
 	model = glm::scale(model, glm::vec3(0.02f));
 	source.sponzaShader->setMat4("model", model);
+	source.sponzaShader->setMat3("modelMatrix", glm::mat3(glm::transpose(glm::inverse(model))));
 
 	source.sponzaModel->Draw(*(source.sponzaShader));
 
@@ -272,6 +273,7 @@ void RenderScene(SceneResources& source, glm::mat4& view, glm::mat4& projection,
 	model = glm::translate(model, glm::vec3(5.0f, 0.6f, 0.0f));
 	model = glm::scale(model, glm::vec3(0.2f));
 	source.sponzaShader->setMat4("model", model);
+	source.sponzaShader->setMat3("modelMatrix", glm::mat3(glm::transpose(glm::inverse(model))));
 	source.backpack->Draw(*(source.sponzaShader));
 	glStencilMask(0x00);
 
@@ -287,6 +289,7 @@ void RenderScene(SceneResources& source, glm::mat4& view, glm::mat4& projection,
 	model = glm::mat4(1.0f);
 	model = glm::translate(model, glm::vec3(-1.0f, 0.5f, -1.0f));
 	source.simpleShader->setMat4("model", model);
+
 	glDrawArrays(GL_TRIANGLES, 0, 36);
 	model = glm::mat4(1.0f);
 	model = glm::translate(model, glm::vec3(2.0f, 0.5f, 0.0f));
@@ -333,7 +336,6 @@ void RenderScene(SceneResources& source, glm::mat4& view, glm::mat4& projection,
 
 	source.outlineShader->use();
 	source.outlineShader->setMat4("view", view);
-	source.outlineShader->setMat4("projection", projection);
 
 	model = glm::mat4(1.0f);
 	model = glm::translate(model, glm::vec3(5.0f, 0.6f, 0.0f));
@@ -723,6 +725,7 @@ int main()
 		// POST PROCESSING FRAMEBUFFER
 
 		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
+		glViewport(0, 0, 800, 600);
 
 		glm::mat4 view = camera.GetViewMatrix();
 		glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), static_cast<float>(frameBufferWidth) / static_cast<float>(frameBufferHeight), 0.1f, 500.0f);
