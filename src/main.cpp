@@ -18,9 +18,6 @@
 #include <iostream>
 #include <map>
 
-
-int a = 9;
-
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
@@ -42,10 +39,18 @@ bool firstMouse = true;
 bool backpackoutline = false;
 bool escPressed = false;
 bool blinn = false;
-bool sharpen = false;
+bool blur = false;
 
 unsigned int textureColorBuffer, textureColorBuffer2;
 unsigned int rbo, rbo2;
+
+float shine = 64.0f;
+glm::vec3 dirLightDirection = glm::vec3(-0.2f, -1.0f, -0.3f);
+glm::vec3 dirLightAmbient = glm::vec3(0.03f);
+glm::vec3 dirLightDiffuse = glm::vec3(0.25f);
+glm::vec3 dirLightSpecular = glm::vec3(0.3f);
+
+float powerOfDirectional = 1.0f;
 
 void resizeFramebufferAttachments(int width, int height)
 {
@@ -202,6 +207,145 @@ unsigned int loadTexture(const char* path, bool gamma = false)
 	}
 
 	return textureID;
+}
+
+struct SceneResources
+{
+	Shader* sponzaShader;
+	Shader* simpleShader;
+	Shader* outlineShader;
+
+	Model* sponzaModel;
+	Model* backpack;
+
+	std::vector<glm::vec3>* vegetation;
+	
+	unsigned int cubeTexture;
+	unsigned int vegTexture;
+	unsigned int floorTexture;
+
+	unsigned int cubeVAO, planeVAO, vegVAO;
+
+};
+
+void RenderScene(SceneResources& source, glm::mat4& view, glm::mat4& projection, glm::vec3 viewPos)
+{
+	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_STENCIL_TEST);
+	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+
+	glEnable(GL_CULL_FACE);
+	glStencilMask(0xFF);
+	glClearColor(0.01f, 0.01f, 0.01f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+	glStencilMask(0x00);
+
+	// SPONZA SCENE
+
+	source.sponzaShader->use();
+	source.sponzaShader->setBool("blinn", blinn);
+	source.sponzaShader->setFloat("shininess", shine);
+	source.sponzaShader->setVec3("dirLight.direction", dirLightDirection);
+	source.sponzaShader->setVec3("dirLight.ambient", dirLightAmbient * powerOfDirectional);
+	source.sponzaShader->setVec3("dirLight.diffuse", dirLightDiffuse * powerOfDirectional);
+	source.sponzaShader->setVec3("dirLight.specular", dirLightSpecular * powerOfDirectional);
+
+	source.sponzaShader->setVec3("viewPos", viewPos);
+
+	source.sponzaShader->setMat4("view", view);
+	source.sponzaShader->setMat4("projection", projection);
+
+	glm::mat4 model = glm::mat4(1.0f);
+	model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
+	model = glm::scale(model, glm::vec3(0.02f));
+	source.sponzaShader->setMat4("model", model);
+
+	source.sponzaModel->Draw(*(source.sponzaShader));
+
+
+	// BACKPACK RENDER
+
+	glStencilFunc(GL_ALWAYS, 1, 0xFF);
+	glStencilMask(0xFF);
+
+	model = glm::mat4(1.0f);
+	model = glm::translate(model, glm::vec3(5.0f, 0.6f, 0.0f));
+	model = glm::scale(model, glm::vec3(0.2f));
+	source.sponzaShader->setMat4("model", model);
+	source.backpack->Draw(*(source.sponzaShader));
+	glStencilMask(0x00);
+
+	// SPONZA RENDER
+
+	source.simpleShader->use();
+	source.simpleShader->setMat4("view", view);
+	source.simpleShader->setMat4("projection", projection);
+
+	glBindVertexArray(source.cubeVAO);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, source.cubeTexture);
+	model = glm::mat4(1.0f);
+	model = glm::translate(model, glm::vec3(-1.0f, 0.5f, -1.0f));
+	source.simpleShader->setMat4("model", model);
+	glDrawArrays(GL_TRIANGLES, 0, 36);
+	model = glm::mat4(1.0f);
+	model = glm::translate(model, glm::vec3(2.0f, 0.5f, 0.0f));
+	source.simpleShader->setMat4("model", model);
+	glDrawArrays(GL_TRIANGLES, 0, 36);
+
+
+	// VEGETATION
+
+	glDisable(GL_CULL_FACE);
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	glBindVertexArray(source.vegVAO);
+	glBindTexture(GL_TEXTURE_2D, source.vegTexture);
+
+
+	std::map<float, glm::vec3> sorted;
+	for (unsigned int i = 0; i < source.vegetation->size(); ++i)
+	{
+		float dist = glm::length(camera.Position - (*source.vegetation)[i]);
+		sorted[-dist] = (*source.vegetation)[i];
+	}
+
+	for (auto a : sorted)
+	{
+		model = glm::mat4(1.0f);
+		model = glm::translate(model, glm::vec3(0.0, 0.5, 0.0) + a.second);
+		source.simpleShader->setMat4("model", model);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+	}
+
+	glEnable(GL_CULL_FACE);
+	glDisable(GL_BLEND);
+
+	// PLANE RENDER
+	glBindVertexArray(source.planeVAO);
+	glBindTexture(GL_TEXTURE_2D, source.floorTexture);
+	source.simpleShader->setMat4("model", glm::mat4(1.0f));
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+
+	//OUTLINE
+
+	source.outlineShader->use();
+	source.outlineShader->setMat4("view", view);
+	source.outlineShader->setMat4("projection", projection);
+
+	model = glm::mat4(1.0f);
+	model = glm::translate(model, glm::vec3(5.0f, 0.6f, 0.0f));
+	model = glm::scale(model, glm::vec3(0.23f));
+	source.outlineShader->setMat4("model", model);
+
+	if (backpackoutline)
+	{
+		source.backpack->DrawOutlined(*(source.outlineShader));
+	}
+
+
 }
 
 int main()
@@ -407,15 +551,13 @@ int main()
 	glEnableVertexAttribArray(1);
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
 	
-	// FOR POST PROCESSING
-	// FOR POST PROCESSING
-	// FOR POST PROCESSING
+
+	// POST PROCESSING FRAMEBUFFER INITIALIZATION
 
 	unsigned int frameBuffer;
 	glGenFramebuffers(1, &frameBuffer);
 	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
 
-	//unsigned int textureColorBuffer;
 	glGenTextures(1, &textureColorBuffer);
 	glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 800, 600, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
@@ -425,7 +567,6 @@ int main()
 
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureColorBuffer, 0);
 
-	//unsigned int rbo;
 	glGenRenderbuffers(1, &rbo);
 	glBindRenderbuffer(GL_RENDERBUFFER, rbo);
 	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, 800, 600);
@@ -438,15 +579,12 @@ int main()
 	
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	// FOR REAR WINDOW
-	// FOR REAR WINDOW
-	// FOR REAR WINDOW
+	// WINDOW FRAMEBUFFER INITIALIZATLION
 
 	unsigned int frameBuffer2;
 	glGenFramebuffers(1, &frameBuffer2);
 	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer2);
 
-	//unsigned int textureColorBuffer2;
 	glGenTextures(1, &textureColorBuffer2);
 	glBindTexture(GL_TEXTURE_2D, textureColorBuffer2);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 240, 180, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
@@ -456,7 +594,6 @@ int main()
 
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureColorBuffer2, 0);
 
-	//unsigned int rbo2;
 	glGenRenderbuffers(1, &rbo2);
 	glBindRenderbuffer(GL_RENDERBUFFER, rbo2);
 	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, 240, 180);
@@ -469,13 +606,13 @@ int main()
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	Shader cubeShader("assets/shaders/cubeshader.vert", "assets/shaders/cubeshader.frag");
+	Shader sponzaShader("assets/shaders/sponzaShader.vert", "assets/shaders/sponzaShader.frag");
 	Shader simpleShader("assets/shaders/simpleshader.vert", "assets/shaders/simpleshader.frag");
 	Shader outlineShader("assets/shaders/outline.vert", "assets/shaders/outline.frag");
 	Shader screenShader("assets/shaders/screenshader.vert", "assets/shaders/screenshader.frag");
 	Shader mirrorShader("assets/shaders/mirror.vert", "assets/shaders/mirror.frag");
 
-	Model ourModel("assets/models/sponza/sponza.obj");
+	Model sponzaModel("assets/models/sponza/sponza.obj");
 
 	stbi_set_flip_vertically_on_load(true);
 
@@ -490,62 +627,54 @@ int main()
 
 	screenShader.use();
 	screenShader.setInt("screenTexture", 0);
-	screenShader.setBool("sharpen", sharpen);
+	screenShader.setBool("blur", blur);
 
 	mirrorShader.use();
 	mirrorShader.setInt("mirrorTexture", 0);
 
-	cubeShader.use();
-	cubeShader.setFloat("shininess", 64.0f);
-	cubeShader.setBool("blinn", blinn);
-	cubeShader.setVec3("dirLight.direction", -0.2f, -1.0f, -0.3f);
-	cubeShader.setVec3("dirLight.ambient", 0.3f, 0.3f, 0.3f);
-	cubeShader.setVec3("dirLight.diffuse", 0.4f, 0.4f, 0.4f);
-	cubeShader.setVec3("dirLight.specular", 0.5f, 0.5f, 0.5f);
+	sponzaShader.use();
+	sponzaShader.setFloat("shininess", 64.0f);
+	sponzaShader.setBool("blinn", blinn);
+	sponzaShader.setVec3("dirLight.direction", -0.2f, -1.0f, -0.3f);
+	sponzaShader.setVec3("dirLight.ambient", 0.3f, 0.3f, 0.3f);
+	sponzaShader.setVec3("dirLight.diffuse", 0.4f, 0.4f, 0.4f);
+	sponzaShader.setVec3("dirLight.specular", 0.5f, 0.5f, 0.5f);
 
-	//jdsjakldjalkdjak
-	cubeShader.setVec3("pointLights[0].position", pointLightPositions[0]);
-	cubeShader.setVec3("pointLights[0].ambient", 0.01f, 0.01f, 0.01f);
-	cubeShader.setVec3("pointLights[0].diffuse", 0.25f, 0.25f, 0.25f);
-	cubeShader.setVec3("pointLights[0].specular", 0.4f, 0.4f, 0.4f);
-	cubeShader.setFloat("pointLights[0].constant", 1.0f);
-	cubeShader.setFloat("pointLights[0].linear", 0.09f);
-	cubeShader.setFloat("pointLights[0].quadratic", 0.032f);
-	// point light 2
-	cubeShader.setVec3("pointLights[1].position", pointLightPositions[1]);
-	cubeShader.setVec3("pointLights[1].ambient", 0.01f, 0.01f, 0.01f);
-	cubeShader.setVec3("pointLights[1].diffuse", 0.25f, 0.25f, 0.25f);
-	cubeShader.setVec3("pointLights[1].specular", 0.4f, 0.4f, 0.4f);
-	cubeShader.setFloat("pointLights[1].constant", 1.0f);
-	cubeShader.setFloat("pointLights[1].linear", 0.09f);
-	cubeShader.setFloat("pointLights[1].quadratic", 0.032f);
-	// point light 3
-	cubeShader.setVec3("pointLights[2].position", pointLightPositions[2]);
-	cubeShader.setVec3("pointLights[2].ambient", 0.01f, 0.01f, 0.01f);
-	cubeShader.setVec3("pointLights[2].diffuse", 0.25f, 0.25f, 0.25f);
-	cubeShader.setVec3("pointLights[2].specular", 0.4f, 0.4f, 0.4f);
-	cubeShader.setFloat("pointLights[2].constant", 1.0f);
-	cubeShader.setFloat("pointLights[2].linear", 0.09f);
-	cubeShader.setFloat("pointLights[2].quadratic", 0.032f);
-	// point light 4
-	cubeShader.setVec3("pointLights[3].position", pointLightPositions[3]);
-	cubeShader.setVec3("pointLights[3].ambient", 0.01f, 0.01f, 0.01f);
-	cubeShader.setVec3("pointLights[3].diffuse", 0.25f, 0.25f, 0.25f);
-	cubeShader.setVec3("pointLights[3].specular", 0.4f, 0.4f, 0.4f);
-	cubeShader.setFloat("pointLights[3].constant", 1.0f);
-	cubeShader.setFloat("pointLights[3].linear", 0.09f);
-	cubeShader.setFloat("pointLights[3].quadratic", 0.032f);
+	sponzaShader.setVec3("pointLights[0].position", pointLightPositions[0]);
+	sponzaShader.setVec3("pointLights[0].ambient", 0.01f, 0.01f, 0.01f);
+	sponzaShader.setVec3("pointLights[0].diffuse", 0.25f, 0.25f, 0.25f);
+	sponzaShader.setVec3("pointLights[0].specular", 0.4f, 0.4f, 0.4f);
+	sponzaShader.setFloat("pointLights[0].constant", 1.0f);
+	sponzaShader.setFloat("pointLights[0].linear", 0.09f);
+	sponzaShader.setFloat("pointLights[0].quadratic", 0.032f);
 
+	sponzaShader.setVec3("pointLights[1].position", pointLightPositions[1]);
+	sponzaShader.setVec3("pointLights[1].ambient", 0.01f, 0.01f, 0.01f);
+	sponzaShader.setVec3("pointLights[1].diffuse", 0.25f, 0.25f, 0.25f);
+	sponzaShader.setVec3("pointLights[1].specular", 0.4f, 0.4f, 0.4f);
+	sponzaShader.setFloat("pointLights[1].constant", 1.0f);
+	sponzaShader.setFloat("pointLights[1].linear", 0.09f);
+	sponzaShader.setFloat("pointLights[1].quadratic", 0.032f);
 
-	float powerOfDirectional = 1.0f;
-	float shine = 64.0f;
-	glm::vec3 dirLightDirection = glm::vec3(-0.2f, -1.0f, -0.3f);
-	glm::vec3 dirLightAmbient = glm::vec3(0.03f);
-	glm::vec3 dirLightDiffuse = glm::vec3(0.25f);
-	glm::vec3 dirLightSpecular = glm::vec3(0.3f);
+	sponzaShader.setVec3("pointLights[2].position", pointLightPositions[2]);
+	sponzaShader.setVec3("pointLights[2].ambient", 0.01f, 0.01f, 0.01f);
+	sponzaShader.setVec3("pointLights[2].diffuse", 0.25f, 0.25f, 0.25f);
+	sponzaShader.setVec3("pointLights[2].specular", 0.4f, 0.4f, 0.4f);
+	sponzaShader.setFloat("pointLights[2].constant", 1.0f);
+	sponzaShader.setFloat("pointLights[2].linear", 0.09f);
+	sponzaShader.setFloat("pointLights[2].quadratic", 0.032f);
+
+	sponzaShader.setVec3("pointLights[3].position", pointLightPositions[3]);
+	sponzaShader.setVec3("pointLights[3].ambient", 0.01f, 0.01f, 0.01f);
+	sponzaShader.setVec3("pointLights[3].diffuse", 0.25f, 0.25f, 0.25f);
+	sponzaShader.setVec3("pointLights[3].specular", 0.4f, 0.4f, 0.4f);
+	sponzaShader.setFloat("pointLights[3].constant", 1.0f);
+	sponzaShader.setFloat("pointLights[3].linear", 0.09f);
+	sponzaShader.setFloat("pointLights[3].quadratic", 0.032f);
 
 	while (!glfwWindowShouldClose(window))
 	{
+
 		glfwPollEvents();
 
 		float currentFrame = glfwGetTime();
@@ -565,7 +694,7 @@ int main()
 		ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
 		ImGui::Checkbox("Backpack outline", &backpackoutline);
 		ImGui::Checkbox("Blinn-Phong", &blinn);
-		ImGui::Checkbox("Sharpen", &sharpen);
+		ImGui::Checkbox("Blur", &blur);
 
 		ImGui::Separator();
 		ImGui::Text("Directional Light");
@@ -574,261 +703,46 @@ int main()
 
 		ImGui::End();
 
+		// SCENE SETUP
 
-		// scene start
+		SceneResources myResources;
+		myResources.backpack = &backPack;
+		myResources.sponzaModel = &sponzaModel;
+		myResources.sponzaShader = &sponzaShader;
+		myResources.simpleShader = &simpleShader;
+		myResources.outlineShader = &outlineShader;
+		myResources.cubeTexture = cubeTexture;
+		myResources.floorTexture = floorTexture;
+		myResources.vegTexture = vegTexture;
+		myResources.vegetation = &vegetation;
+		myResources.cubeVAO = cubeVAO;
+		myResources.planeVAO = planeVAO;
+		myResources.vegVAO = vegVAO;
 
-		glEnable(GL_DEPTH_TEST);
-		glEnable(GL_STENCIL_TEST);
-		glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
-		glEnable(GL_CULL_FACE);
+		// POST PROCESSING FRAMEBUFFER
+
 		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
-		glStencilMask(0xFF);
-		glClearColor(0.01f, 0.01f, 0.01f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-		glStencilMask(0x00);
 
-		// SPONZA SCENE
-
-		cubeShader.use();
-		cubeShader.setBool("blinn", blinn);
-		cubeShader.setFloat("shininess", shine);
-		cubeShader.setVec3("dirLight.direction", dirLightDirection);
-		cubeShader.setVec3("dirLight.ambient", dirLightAmbient * powerOfDirectional);
-		cubeShader.setVec3("dirLight.diffuse", dirLightDiffuse * powerOfDirectional);
-		cubeShader.setVec3("dirLight.specular", dirLightSpecular * powerOfDirectional);
-
-		cubeShader.setVec3("viewPos", camera.Position);
 		glm::mat4 view = camera.GetViewMatrix();
-		//glm::mat4 view = glm::lookAt(camera.Position, camera.Position - camera.Front, camera.Up);
+		glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), static_cast<float>(frameBufferWidth) / static_cast<float>(frameBufferHeight), 0.1f, 500.0f);
 
-		cubeShader.setMat4("view", view);
-		glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), static_cast<float>(frameBufferWidth)/ static_cast<float>(frameBufferHeight), 0.1f, 500.0f);
-		cubeShader.setMat4("projection", projection);
-
-		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
-		model = glm::scale(model, glm::vec3(0.02f));
-		cubeShader.setMat4("model", model);
-	
-		ourModel.Draw(cubeShader);
+		RenderScene(myResources, view, projection, camera.Position);
 
 
-		// BACKPACK RENDER
+		// WINDOW FRAMEBUFFER
 
-		glStencilFunc(GL_ALWAYS, 1, 0xFF);
-		glStencilMask(0xFF);
-
-		model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(5.0f, 0.6f, 0.0f));
-		model = glm::scale(model, glm::vec3(0.2f));
-		cubeShader.setMat4("model", model);
-		backPack.Draw(cubeShader);
-		glStencilMask(0x00);
-
-		// CUBE RENDER
-
-		simpleShader.use();
-		simpleShader.setMat4("view", view);
-		simpleShader.setMat4("projection", projection);
-
-		glBindVertexArray(cubeVAO);
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, cubeTexture);
-		model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(-1.0f, 0.5f, -1.0f));
-		simpleShader.setMat4("model", model);
-		glDrawArrays(GL_TRIANGLES, 0, 36);
-		model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(2.0f, 0.5f, 0.0f));
-		simpleShader.setMat4("model", model);
-		glDrawArrays(GL_TRIANGLES, 0, 36);
-
-
-		// VEGETATION
-
-		glDisable(GL_CULL_FACE);
-
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-		glBindVertexArray(vegVAO);
-		glBindTexture(GL_TEXTURE_2D, vegTexture);
-
-
-		std::map<float, glm::vec3> sorted;
-		for (unsigned int i = 0; i < vegetation.size(); ++i)
-		{
-			float dist = glm::length(camera.Position - vegetation[i]);
-			sorted[-dist] = vegetation[i];
-		}
-
-		for (auto a : sorted)
-		{
-			model = glm::mat4(1.0f);
-			model = glm::translate(model, glm::vec3(0.0,0.5,0.0) + a.second);
-			simpleShader.setMat4("model", model);
-			glDrawArrays(GL_TRIANGLES, 0, 6);
-		}
-
-		glEnable(GL_CULL_FACE);
-		glDisable(GL_BLEND);
-	
-		// PLANE RENDER
-		glBindVertexArray(planeVAO);
-		glBindTexture(GL_TEXTURE_2D, floorTexture);
-		simpleShader.setMat4("model", glm::mat4(1.0f));
-		glDrawArrays(GL_TRIANGLES, 0, 6);
-
-		//OUTLINE
-
-		outlineShader.use();
-		outlineShader.setMat4("view", view);
-		outlineShader.setMat4("projection", projection);
-
-		model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(5.0f, 0.6f, 0.0f));
-		model = glm::scale(model, glm::vec3(0.23f));
-		outlineShader.setMat4("model", model);
-
-		if (backpackoutline)
-		{
-			backPack.DrawOutlined(outlineShader);
-		}
-
-
-		// FRAMEBUFFER RENDERING FOR UI
-		// FRAMEBUFFER RENDERING FOR UI
-		// FRAMEBUFFER RENDERING FOR UI
-		// FRAMEBUFFER RENDERING FOR UI
-		// FRAMEBUFFER RENDERING FOR UI
-
-				// scene start
-
-		glEnable(GL_DEPTH_TEST);
-		glEnable(GL_STENCIL_TEST);
-		glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-
-		glEnable(GL_CULL_FACE);
 		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer2);
 		glViewport(0, 0, 240, 180);
 
-		glStencilMask(0xFF);
-		glClearColor(0.01f, 0.01f, 0.01f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-		glStencilMask(0x00);
-
-		// SPONZA SCENE
-
-		cubeShader.use();
-		cubeShader.setVec3("viewPos", camera.Position);
-		glm::vec3 rearFront(
-			-camera.Front.x,
-			camera.Front.y,
-			-camera.Front.z
-		);
-		glm::vec3 rearUp(
-			-camera.Up.x,
-			camera.Up.y,
-			-camera.Up.z
-		);
+		glm::vec3 rearFront(-camera.Front.x, camera.Front.y, -camera.Front.z);
+		glm::vec3 rearUp(-camera.Up.x, camera.Up.y, -camera.Up.z);
 		view = glm::lookAt(camera.Position, camera.Position + rearFront, rearUp);
-
-		cubeShader.setMat4("view", view);
-		projection = glm::perspective(glm::radians(camera.Zoom), static_cast<float>(frameBufferWidth) / static_cast<float>(frameBufferHeight), 0.1f, 500.0f);
-		cubeShader.setMat4("projection", projection);
-
-		model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
-		model = glm::scale(model, glm::vec3(0.02f));
-		cubeShader.setMat4("model", model);
-
-		ourModel.Draw(cubeShader);
-
-
-		// BACKPACK RENDER
-
-		glStencilFunc(GL_ALWAYS, 1, 0xFF);
-		glStencilMask(0xFF);
-
-		model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(5.0f, 0.6f, 0.0f));
-		model = glm::scale(model, glm::vec3(0.2f));
-		cubeShader.setMat4("model", model);
-		backPack.Draw(cubeShader);
-		glStencilMask(0x00);
-
-		// CUBE RENDER
-
-		simpleShader.use();
-		simpleShader.setMat4("view", view);
-		simpleShader.setMat4("projection", projection);
-
-		glBindVertexArray(cubeVAO);
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, cubeTexture);
-		model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(-1.0f, 0.5f, -1.0f));
-		simpleShader.setMat4("model", model);
-		glDrawArrays(GL_TRIANGLES, 0, 36);
-		model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(2.0f, 0.5f, 0.0f));
-		simpleShader.setMat4("model", model);
-		glDrawArrays(GL_TRIANGLES, 0, 36);
-
-
-		// VEGETATION
-
-		glDisable(GL_CULL_FACE);
-
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-		glBindVertexArray(vegVAO);
-		glBindTexture(GL_TEXTURE_2D, vegTexture);
-
-
-		for (unsigned int i = 0; i < vegetation.size(); ++i)
-		{
-			float dist = glm::length(camera.Position - vegetation[i]);
-			sorted[-dist] = vegetation[i];
-		}
-
-		for (auto a : sorted)
-		{
-			model = glm::mat4(1.0f);
-			model = glm::translate(model, glm::vec3(0.0, 0.5, 0.0) + a.second);
-			simpleShader.setMat4("model", model);
-			glDrawArrays(GL_TRIANGLES, 0, 6);
-		}
-
-		glEnable(GL_CULL_FACE);
-		glDisable(GL_BLEND);
-
-		// PLANE RENDER
-		glBindVertexArray(planeVAO);
-		glBindTexture(GL_TEXTURE_2D, floorTexture);
-		simpleShader.setMat4("model", glm::mat4(1.0f));
-		glDrawArrays(GL_TRIANGLES, 0, 6);
-
-		//OUTLINE
-
-		outlineShader.use();
-		outlineShader.setMat4("view", view);
-		outlineShader.setMat4("projection", projection);
-
-		model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(5.0f, 0.6f, 0.0f));
-		model = glm::scale(model, glm::vec3(0.23f));
-		outlineShader.setMat4("model", model);
-
-		if (backpackoutline)
-		{
-			backPack.DrawOutlined(outlineShader);
-		}
-
-
-		// POST
+		projection = glm::perspective(glm::radians(camera.Zoom), static_cast<float>(MIRROR_WIDTH) / static_cast<float>(MIRROR_HEIGHT), 0.1f, 500.0f);
+		
+		RenderScene(myResources, view, projection, camera.Position);
+	
+		// POST PROCESSING
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glViewport(0,0,frameBufferWidth,frameBufferHeight);
@@ -836,14 +750,14 @@ int main()
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		screenShader.use();
-		screenShader.setBool("sharpen", sharpen);
+		screenShader.setBool("blur", blur);
 		glBindVertexArray(quadVAO);
 		glDisable(GL_DEPTH_TEST);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 
-		// uıuı
+		// WINDOW RENDER
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -853,9 +767,6 @@ int main()
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, textureColorBuffer2);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
-
-		//glBindVertexArray(uiVAO);
-		//glDrawArrays(GL_TRIANGLES, 0, 6);
 
 		// IMGUI RENDER
 
