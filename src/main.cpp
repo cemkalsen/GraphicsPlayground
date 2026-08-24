@@ -40,6 +40,7 @@ bool backpackoutline = false;
 bool escPressed = false;
 bool blinn = false;
 bool blur = false;
+bool mirrored = false;
 float exposure = 2.5f;
 
 unsigned int textureColorBuffer, textureColorBuffer2;
@@ -47,9 +48,9 @@ unsigned int rbo, rbo2;
 
 float shine = 64.0f;
 glm::vec3 dirLightDirection = glm::vec3(-0.2f, -1.0f, -0.3f);
-glm::vec3 dirLightAmbient = glm::vec3(0.03f);
-glm::vec3 dirLightDiffuse = glm::vec3(0.25f);
-glm::vec3 dirLightSpecular = glm::vec3(0.3f);
+glm::vec3 dirLightAmbient = glm::vec3(0.02f);
+glm::vec3 dirLightDiffuse = glm::vec3(0.35f);
+glm::vec3 dirLightSpecular = glm::vec3(0.35f);
 
 float powerOfDirectional = 1.0f;
 
@@ -61,7 +62,7 @@ void resizeFramebufferAttachments(int width, int height)
 	}
 
 	glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGB, GL_FLOAT, nullptr);
 
 	glBindRenderbuffer(GL_RENDERBUFFER, rbo);
 	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
@@ -70,7 +71,7 @@ void resizeFramebufferAttachments(int width, int height)
 	glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
 	glBindTexture(GL_TEXTURE_2D, textureColorBuffer2);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, MIRROR_WIDTH, MIRROR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, MIRROR_WIDTH, MIRROR_HEIGHT, 0, GL_RGB, GL_FLOAT, nullptr);
 
 	glBindRenderbuffer(GL_RENDERBUFFER, rbo2);
 	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, MIRROR_WIDTH, MIRROR_HEIGHT);
@@ -212,7 +213,7 @@ unsigned int loadTexture(const char* path, bool gamma = false)
 
 struct SceneResources
 {
-	Shader* sponzaShader;
+	Shader* lightingShader;
 	Shader* simpleShader;
 	Shader* outlineShader;
 
@@ -243,26 +244,26 @@ void RenderScene(const SceneResources& source, const glm::mat4& view, const glm:
 
 	// SPONZA SCENE
 
-	source.sponzaShader->use();
-	source.sponzaShader->setBool("blinn", blinn);
-	source.sponzaShader->setFloat("shininess", shine);
-	source.sponzaShader->setVec3("dirLight.direction", dirLightDirection);
-	source.sponzaShader->setVec3("dirLight.ambient", dirLightAmbient * powerOfDirectional);
-	source.sponzaShader->setVec3("dirLight.diffuse", dirLightDiffuse * powerOfDirectional);
-	source.sponzaShader->setVec3("dirLight.specular", dirLightSpecular * powerOfDirectional);
+	source.lightingShader->use();
+	source.lightingShader->setBool("blinn", blinn);
+	source.lightingShader->setFloat("shininess", shine);
+	source.lightingShader->setVec3("dirLight.direction", dirLightDirection);
+	source.lightingShader->setVec3("dirLight.ambient", dirLightAmbient * powerOfDirectional);
+	source.lightingShader->setVec3("dirLight.diffuse", dirLightDiffuse * powerOfDirectional);
+	source.lightingShader->setVec3("dirLight.specular", dirLightSpecular * powerOfDirectional);
 
-	source.sponzaShader->setVec3("viewPos", viewPos);
+	source.lightingShader->setVec3("viewPos", viewPos);
 
-	source.sponzaShader->setMat4("view", view);
-	source.sponzaShader->setMat4("projection", projection);
+	source.lightingShader->setMat4("view", view);
+	source.lightingShader->setMat4("projection", projection);
 
 	glm::mat4 model = glm::mat4(1.0f);
 	model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
 	model = glm::scale(model, glm::vec3(0.02f));
-	source.sponzaShader->setMat4("model", model);
-	source.sponzaShader->setMat3("modelMatrix", glm::mat3(glm::transpose(glm::inverse(model))));
+	source.lightingShader->setMat4("model", model);
+	source.lightingShader->setMat3("modelMatrix", glm::mat3(glm::transpose(glm::inverse(model))));
 
-	source.sponzaModel->Draw(*(source.sponzaShader));
+	source.sponzaModel->Draw(*(source.lightingShader));
 
 
 	// BACKPACK RENDER
@@ -273,9 +274,9 @@ void RenderScene(const SceneResources& source, const glm::mat4& view, const glm:
 	model = glm::mat4(1.0f);
 	model = glm::translate(model, glm::vec3(5.0f, 0.6f, 0.0f));
 	model = glm::scale(model, glm::vec3(0.2f));
-	source.sponzaShader->setMat4("model", model);
-	source.sponzaShader->setMat3("modelMatrix", glm::mat3(glm::transpose(glm::inverse(model))));
-	source.backpack->Draw(*(source.sponzaShader));
+	source.lightingShader->setMat4("model", model);
+	source.lightingShader->setMat3("modelMatrix", glm::mat3(glm::transpose(glm::inverse(model))));
+	source.backpack->Draw(*(source.lightingShader));
 	glStencilMask(0x00);
 
 	// SPONZA RENDER
@@ -312,7 +313,7 @@ void RenderScene(const SceneResources& source, const glm::mat4& view, const glm:
 	std::map<float, glm::vec3> sorted;
 	for (unsigned int i = 0; i < source.vegetation->size(); ++i)
 	{
-		float dist = glm::length(camera.Position - (*source.vegetation)[i]);
+		float dist = glm::length(viewPos - (*source.vegetation)[i]);
 		sorted[-dist] = (*source.vegetation)[i];
 	}
 
@@ -565,7 +566,7 @@ int main()
 
 	glGenTextures(1, &textureColorBuffer);
 	glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 800, 600, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 800, 600, 0, GL_RGB, GL_FLOAT , NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -592,7 +593,7 @@ int main()
 
 	glGenTextures(1, &textureColorBuffer2);
 	glBindTexture(GL_TEXTURE_2D, textureColorBuffer2);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 240, 180, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 240, 180, 0, GL_RGB, GL_FLOAT, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -611,7 +612,7 @@ int main()
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	Shader sponzaShader("assets/shaders/sponzaShader.vert", "assets/shaders/sponzaShader.frag");
+	Shader lightingShader("assets/shaders/lightingShader.vert", "assets/shaders/lightingShader.frag");
 	Shader simpleShader("assets/shaders/simpleshader.vert", "assets/shaders/simpleshader.frag");
 	Shader outlineShader("assets/shaders/outline.vert", "assets/shaders/outline.frag");
 	Shader screenShader("assets/shaders/screenshader.vert", "assets/shaders/screenshader.frag");
@@ -637,45 +638,38 @@ int main()
 	mirrorShader.use();
 	mirrorShader.setInt("mirrorTexture", 0);
 
-	sponzaShader.use();
-	sponzaShader.setFloat("shininess", 64.0f);
-	sponzaShader.setBool("blinn", blinn);
-	sponzaShader.setVec3("dirLight.direction", -0.2f, -1.0f, -0.3f);
-	sponzaShader.setVec3("dirLight.ambient", 0.3f, 0.3f, 0.3f);
-	sponzaShader.setVec3("dirLight.diffuse", 0.4f, 0.4f, 0.4f);
-	sponzaShader.setVec3("dirLight.specular", 0.5f, 0.5f, 0.5f);
+	lightingShader.use();
+	lightingShader.setFloat("shininess", 64.0f);
+	lightingShader.setBool("blinn", blinn);
 
-	sponzaShader.setVec3("pointLights[0].position", pointLightPositions[0]);
-	sponzaShader.setVec3("pointLights[0].ambient", 0.1f, 0.1f, 0.1f);
-	sponzaShader.setVec3("pointLights[0].diffuse", 10.25f, 10.25f, 10.25f);
-	sponzaShader.setVec3("pointLights[0].specular", 0.4f, 0.4f, 0.4f);
-	sponzaShader.setFloat("pointLights[0].constant", 1.0f);
-	sponzaShader.setFloat("pointLights[0].linear", 0.09f);
-	sponzaShader.setFloat("pointLights[0].quadratic", 0.032f);
+	for (int i = 0; i < 4; ++i)
+	{
+		std::string s = "pointLights[" + std::to_string(i) + "].";
+		lightingShader.setVec3(s + "position", pointLightPositions[i]);
+		lightingShader.setVec3(s + "ambient", 0.0f, 0.0f, 0.0f);
+		lightingShader.setVec3(s + "diffuse", 0.5f, 0.5f, 0.5f);
+		lightingShader.setVec3(s + "specular", 0.4f, 0.4f, 0.4f);
+		lightingShader.setFloat(s + "constant", 1.0f);
+		lightingShader.setFloat(s + "linear", 0.0f);
+		lightingShader.setFloat(s + "quadratic", 1.0f);
 
-	sponzaShader.setVec3("pointLights[1].position", pointLightPositions[1]);
-	sponzaShader.setVec3("pointLights[1].ambient", 0.1f, 0.1f, 0.1f);
-	sponzaShader.setVec3("pointLights[1].diffuse", 0.25f, 0.25f, 0.25f);
-	sponzaShader.setVec3("pointLights[1].specular", 0.4f, 0.4f, 0.4f);
-	sponzaShader.setFloat("pointLights[1].constant", 1.0f);
-	sponzaShader.setFloat("pointLights[1].linear", 0.09f);
-	sponzaShader.setFloat("pointLights[1].quadratic", 0.032f);
+	}
 
-	sponzaShader.setVec3("pointLights[2].position", pointLightPositions[2]);
-	sponzaShader.setVec3("pointLights[2].ambient", 0.01f, 0.01f, 0.01f);
-	sponzaShader.setVec3("pointLights[2].diffuse", 0.25f, 0.25f, 0.25f);
-	sponzaShader.setVec3("pointLights[2].specular", 0.4f, 0.4f, 0.4f);
-	sponzaShader.setFloat("pointLights[2].constant", 1.0f);
-	sponzaShader.setFloat("pointLights[2].linear", 0.09f);
-	sponzaShader.setFloat("pointLights[2].quadratic", 0.032f);
+	// SCENE SETUP
 
-	sponzaShader.setVec3("pointLights[3].position", pointLightPositions[3]);
-	sponzaShader.setVec3("pointLights[3].ambient", 0.01f, 0.01f, 0.01f);
-	sponzaShader.setVec3("pointLights[3].diffuse", 0.25f, 0.25f, 0.25f);
-	sponzaShader.setVec3("pointLights[3].specular", 0.4f, 0.4f, 0.4f);
-	sponzaShader.setFloat("pointLights[3].constant", 1.0f);
-	sponzaShader.setFloat("pointLights[3].linear", 0.09f);
-	sponzaShader.setFloat("pointLights[3].quadratic", 0.032f);
+	SceneResources myResources;
+	myResources.backpack = &backPack;
+	myResources.sponzaModel = &sponzaModel;
+	myResources.lightingShader = &lightingShader;
+	myResources.simpleShader = &simpleShader;
+	myResources.outlineShader = &outlineShader;
+	myResources.cubeTexture = cubeTexture;
+	myResources.floorTexture = floorTexture;
+	myResources.vegTexture = vegTexture;
+	myResources.vegetation = &vegetation;
+	myResources.cubeVAO = cubeVAO;
+	myResources.planeVAO = planeVAO;
+	myResources.vegVAO = vegVAO;
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -697,39 +691,24 @@ int main()
 
 		ImGui::Begin("Renderer");
 		ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+		ImGui::Text("Frame time: %.3f ms", 1000.0f / ImGui::GetIO().Framerate);
 		ImGui::Text("POSITION: X: %.1f  Y: %.1f  Z: %.1f", camera.Position.x, camera.Position.y, camera.Position.z);
 		ImGui::Checkbox("Backpack outline", &backpackoutline);
 		ImGui::Checkbox("Blinn-Phong", &blinn);
 		ImGui::Checkbox("Blur", &blur);
+		ImGui::Checkbox("Activate Mirror", &mirrored);
 
 		ImGui::Separator();
 		ImGui::Text("Directional Light");
-		ImGui::SliderFloat("Power", &powerOfDirectional, 0.0f, 100.0f);
-		ImGui::SliderFloat("Shininess", &shine, 0.0f, 128.0f);
+		ImGui::SliderFloat("Power", &powerOfDirectional, 0.0f, 5.0f);
+		ImGui::SliderFloat("Shininess", &shine, 1.0f, 128.0f);
 
 		ImGui::Separator();
 		ImGui::Text("HDR");
-		ImGui::SliderFloat("HRDPower", &exposure, 0.0f, 5.0f);
+		ImGui::SliderFloat("Exposure", &exposure, 0.1f, 5.0f);
 
 
 		ImGui::End();
-
-		// SCENE SETUP
-
-		SceneResources myResources;
-		myResources.backpack = &backPack;
-		myResources.sponzaModel = &sponzaModel;
-		myResources.sponzaShader = &sponzaShader;
-		myResources.simpleShader = &simpleShader;
-		myResources.outlineShader = &outlineShader;
-		myResources.cubeTexture = cubeTexture;
-		myResources.floorTexture = floorTexture;
-		myResources.vegTexture = vegTexture;
-		myResources.vegetation = &vegetation;
-		myResources.cubeVAO = cubeVAO;
-		myResources.planeVAO = planeVAO;
-		myResources.vegVAO = vegVAO;
-
 
 		// POST PROCESSING FRAMEBUFFER
 
@@ -742,18 +721,21 @@ int main()
 		RenderScene(myResources, view, projection, camera.Position);
 
 
-		// WINDOW FRAMEBUFFER
+		// MIRROR PASS
 
-		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer2);
-		glViewport(0, 0, 240, 180);
+		if (mirrored)
+		{
+			glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer2);
+			glViewport(0, 0, 240, 180);
 
-		glm::vec3 rearFront(-camera.Front.x, camera.Front.y, -camera.Front.z);
-		glm::vec3 rearUp(-camera.Up.x, camera.Up.y, -camera.Up.z);
-		view = glm::lookAt(camera.Position, camera.Position + rearFront, rearUp);
-		projection = glm::perspective(glm::radians(camera.Zoom), static_cast<float>(MIRROR_WIDTH) / static_cast<float>(MIRROR_HEIGHT), 0.1f, 500.0f);
-		
-		RenderScene(myResources, view, projection, camera.Position);
-	
+			glm::vec3 rearFront(-camera.Front.x, camera.Front.y, -camera.Front.z);
+			glm::vec3 rearUp(-camera.Up.x, camera.Up.y, -camera.Up.z);
+			view = glm::lookAt(camera.Position, camera.Position + rearFront, rearUp);
+			projection = glm::perspective(glm::radians(camera.Zoom), static_cast<float>(MIRROR_WIDTH) / static_cast<float>(MIRROR_HEIGHT), 0.1f, 500.0f);
+
+			RenderScene(myResources, view, projection, camera.Position);
+		}
+
 		// POST PROCESSING
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -772,14 +754,19 @@ int main()
 
 		// WINDOW RENDER
 
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		if(mirrored)
+		{
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-		mirrorShader.use();
-		glBindVertexArray(uiVAO);
-		glDisable(GL_DEPTH_TEST);
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, textureColorBuffer2);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
+			mirrorShader.use();
+			mirrorShader.setFloat("exposure", exposure);
+			glBindVertexArray(uiVAO);
+			glDisable(GL_DEPTH_TEST);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, textureColorBuffer2);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+		}
+
 
 		// IMGUI RENDER
 
