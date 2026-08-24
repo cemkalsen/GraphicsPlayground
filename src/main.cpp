@@ -40,6 +40,7 @@ bool backpackoutline = false;
 bool escPressed = false;
 bool blinn = false;
 bool blur = false;
+float exposure = 2.5f;
 
 unsigned int textureColorBuffer, textureColorBuffer2;
 unsigned int rbo, rbo2;
@@ -60,7 +61,7 @@ void resizeFramebufferAttachments(int width, int height)
 	}
 
 	glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
 
 	glBindRenderbuffer(GL_RENDERBUFFER, rbo);
 	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
@@ -69,7 +70,7 @@ void resizeFramebufferAttachments(int width, int height)
 	glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
 	glBindTexture(GL_TEXTURE_2D, textureColorBuffer2);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, MIRROR_WIDTH, MIRROR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, MIRROR_WIDTH, MIRROR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
 
 	glBindRenderbuffer(GL_RENDERBUFFER, rbo2);
 	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, MIRROR_WIDTH, MIRROR_HEIGHT);
@@ -336,11 +337,13 @@ void RenderScene(const SceneResources& source, const glm::mat4& view, const glm:
 
 	source.outlineShader->use();
 	source.outlineShader->setMat4("view", view);
+	source.outlineShader->setMat4("projection", projection);
 
 	model = glm::mat4(1.0f);
 	model = glm::translate(model, glm::vec3(5.0f, 0.6f, 0.0f));
 	model = glm::scale(model, glm::vec3(0.23f));
 	source.outlineShader->setMat4("model", model);
+
 
 	if (backpackoutline)
 	{
@@ -396,10 +399,10 @@ int main()
 
 	glm::vec3 pointLightPositions[] =
 	{
-		glm::vec3(0.0f,2.0f,0.0f),
-		glm::vec3(5.0f,3.0f,7.0f),
-		glm::vec3(10.0f,1.0f,2.0f),
-		glm::vec3(2.0f,6.0f,2.0f)
+		glm::vec3(-1.7f,3.8f,-8.7f),
+		glm::vec3(19.9f,3.7f,-0.5f),
+		glm::vec3(9.8f,7.9f,-0.6f),
+		glm::vec3(-15.0f,6.7f,4.0f)
 	};
 
 	float cubeVertices[] = {
@@ -562,7 +565,7 @@ int main()
 
 	glGenTextures(1, &textureColorBuffer);
 	glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 800, 600, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 800, 600, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -589,7 +592,7 @@ int main()
 
 	glGenTextures(1, &textureColorBuffer2);
 	glBindTexture(GL_TEXTURE_2D, textureColorBuffer2);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 240, 180, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 240, 180, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -643,15 +646,15 @@ int main()
 	sponzaShader.setVec3("dirLight.specular", 0.5f, 0.5f, 0.5f);
 
 	sponzaShader.setVec3("pointLights[0].position", pointLightPositions[0]);
-	sponzaShader.setVec3("pointLights[0].ambient", 0.01f, 0.01f, 0.01f);
-	sponzaShader.setVec3("pointLights[0].diffuse", 0.25f, 0.25f, 0.25f);
+	sponzaShader.setVec3("pointLights[0].ambient", 0.1f, 0.1f, 0.1f);
+	sponzaShader.setVec3("pointLights[0].diffuse", 10.25f, 10.25f, 10.25f);
 	sponzaShader.setVec3("pointLights[0].specular", 0.4f, 0.4f, 0.4f);
 	sponzaShader.setFloat("pointLights[0].constant", 1.0f);
 	sponzaShader.setFloat("pointLights[0].linear", 0.09f);
 	sponzaShader.setFloat("pointLights[0].quadratic", 0.032f);
 
 	sponzaShader.setVec3("pointLights[1].position", pointLightPositions[1]);
-	sponzaShader.setVec3("pointLights[1].ambient", 0.01f, 0.01f, 0.01f);
+	sponzaShader.setVec3("pointLights[1].ambient", 0.1f, 0.1f, 0.1f);
 	sponzaShader.setVec3("pointLights[1].diffuse", 0.25f, 0.25f, 0.25f);
 	sponzaShader.setVec3("pointLights[1].specular", 0.4f, 0.4f, 0.4f);
 	sponzaShader.setFloat("pointLights[1].constant", 1.0f);
@@ -694,14 +697,20 @@ int main()
 
 		ImGui::Begin("Renderer");
 		ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+		ImGui::Text("POSITION: X: %.1f  Y: %.1f  Z: %.1f", camera.Position.x, camera.Position.y, camera.Position.z);
 		ImGui::Checkbox("Backpack outline", &backpackoutline);
 		ImGui::Checkbox("Blinn-Phong", &blinn);
 		ImGui::Checkbox("Blur", &blur);
 
 		ImGui::Separator();
 		ImGui::Text("Directional Light");
-		ImGui::SliderFloat("Power", &powerOfDirectional, 0.0f, 2.0f);
+		ImGui::SliderFloat("Power", &powerOfDirectional, 0.0f, 100.0f);
 		ImGui::SliderFloat("Shininess", &shine, 0.0f, 128.0f);
+
+		ImGui::Separator();
+		ImGui::Text("HDR");
+		ImGui::SliderFloat("HRDPower", &exposure, 0.0f, 5.0f);
+
 
 		ImGui::End();
 
@@ -725,7 +734,7 @@ int main()
 		// POST PROCESSING FRAMEBUFFER
 
 		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
-		glViewport(0, 0, 800, 600);
+		glViewport(0, 0, frameBufferWidth, frameBufferHeight);
 
 		glm::mat4 view = camera.GetViewMatrix();
 		glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), static_cast<float>(frameBufferWidth) / static_cast<float>(frameBufferHeight), 0.1f, 500.0f);
@@ -754,6 +763,7 @@ int main()
 
 		screenShader.use();
 		screenShader.setBool("blur", blur);
+		screenShader.setFloat("exposure", exposure);
 		glBindVertexArray(quadVAO);
 		glDisable(GL_DEPTH_TEST);
 		glActiveTexture(GL_TEXTURE0);

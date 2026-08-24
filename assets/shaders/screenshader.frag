@@ -7,6 +7,8 @@ in vec2 TexCoords;
 uniform sampler2D screenTexture;
 uniform bool blur;
 
+uniform float exposure;
+
 const float offset = 1.0f / 300.0f;
 
 
@@ -51,7 +53,13 @@ void main()
         FragColor = texture(screenTexture, TexCoords);
 
     float gamma = 2.2;
+   
+    vec3 hdrColor = FragColor.rgb;
+    hdrColor = max(hdrColor, vec3(0.0));
 
-    FragColor.rgb = max(FragColor.rgb, vec3(0.0));
-    FragColor.rgb = pow(FragColor.rgb, vec3(1.0/gamma)); 
+    vec3 mapped = vec3(1.0) - exp(-hdrColor * exposure);
+    mapped = pow(mapped, vec3(1.0 / gamma));
+
+
+    FragColor = vec4(mapped, 1.0); 
 }
