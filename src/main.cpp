@@ -18,17 +18,15 @@
 #include <iostream>
 #include <map>
 
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
+const unsigned int SCR_WIDTH = 800, SCR_HEIGHT = 600;
+const unsigned int MIRROR_WIDTH = 240, MIRROR_HEIGHT = 180;
+const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
 
 float deltaTime = 0.0;
 float lastFrame = 0.0;
 
 float lastX = SCR_WIDTH / 2;
 float lastY = SCR_HEIGHT / 2;
-
-const int MIRROR_WIDTH = 240;
-const int MIRROR_HEIGHT = 180;
 
 int frameBufferWidth = SCR_WIDTH;
 int frameBufferHeight = SCR_HEIGHT;
@@ -41,13 +39,16 @@ bool escPressed = false;
 bool blinn = false;
 bool blur = false;
 bool mirrored = false;
+bool showShadow = false;
 float exposure = 2.5f;
 
-unsigned int textureColorBuffer, textureColorBuffer2;
+float multiplier = 55.0f;
+
+unsigned int textureColorBuffer, textureColorBuffer2, depthMap;
 unsigned int rbo, rbo2;
 
 float shine = 64.0f;
-glm::vec3 dirLightDirection = glm::vec3(-0.2f, -1.0f, -0.3f);
+glm::vec3 dirLightDirection = glm::vec3(-0.4f, -1.0f, -0.3f);
 glm::vec3 dirLightAmbient = glm::vec3(0.02f);
 glm::vec3 dirLightDiffuse = glm::vec3(0.35f);
 glm::vec3 dirLightSpecular = glm::vec3(0.35f);
@@ -214,23 +215,38 @@ unsigned int loadTexture(const char* path, bool gamma = false)
 struct SceneResources
 {
 	Shader* lightingShader;
-	Shader* simpleShader;
 	Shader* outlineShader;
+	Shader* shadowShader;
 
 	Model* sponzaModel;
 	Model* backpack;
-
-	std::vector<glm::vec3>* vegetation;
 	
-	unsigned int cubeTexture;
-	unsigned int vegTexture;
-	unsigned int floorTexture;
-
-	unsigned int cubeVAO, planeVAO, vegVAO;
-
 };
 
-void RenderScene(const SceneResources& source, const glm::mat4& view, const glm::mat4& projection, const glm::vec3 viewPos)
+void RenderShadowPass(const SceneResources& source, const glm::mat4& lightSpaceMatrix)
+{
+	glEnable(GL_DEPTH_TEST);
+	glClearColor(0.01f, 0.01f, 0.01f, 1.0f);
+	glClear(GL_DEPTH_BUFFER_BIT);
+
+	// SPONZA SCENE
+	source.shadowShader->use();
+	source.shadowShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
+
+	glm::mat4 model = glm::mat4(1.0f);
+	model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
+	model = glm::scale(model, glm::vec3(0.02f));
+	source.shadowShader->setMat4("model", model);
+	source.sponzaModel->Draw(*(source.shadowShader));
+
+	model = glm::mat4(1.0f);
+	model = glm::translate(model, glm::vec3(5.0f, 0.6f, 0.0f));
+	model = glm::scale(model, glm::vec3(0.2f));
+	source.shadowShader->setMat4("model", model);
+	source.backpack->Draw(*(source.shadowShader));
+}
+
+void RenderScene(const SceneResources& source, const glm::mat4& view, const glm::mat4& projection, const glm::vec3 viewPos, const glm::mat4& lightSpaceMatrix)
 {
 	glEnable(GL_DEPTH_TEST);
 	glEnable(GL_STENCIL_TEST);
@@ -246,11 +262,14 @@ void RenderScene(const SceneResources& source, const glm::mat4& view, const glm:
 
 	source.lightingShader->use();
 	source.lightingShader->setBool("blinn", blinn);
+	source.lightingShader->setBool("showShadow", showShadow);
 	source.lightingShader->setFloat("shininess", shine);
 	source.lightingShader->setVec3("dirLight.direction", dirLightDirection);
 	source.lightingShader->setVec3("dirLight.ambient", dirLightAmbient * powerOfDirectional);
 	source.lightingShader->setVec3("dirLight.diffuse", dirLightDiffuse * powerOfDirectional);
 	source.lightingShader->setVec3("dirLight.specular", dirLightSpecular * powerOfDirectional);
+
+	source.lightingShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
 
 	source.lightingShader->setVec3("viewPos", viewPos);
 
@@ -262,6 +281,9 @@ void RenderScene(const SceneResources& source, const glm::mat4& view, const glm:
 	model = glm::scale(model, glm::vec3(0.02f));
 	source.lightingShader->setMat4("model", model);
 	source.lightingShader->setMat3("modelMatrix", glm::mat3(glm::transpose(glm::inverse(model))));
+
+	glActiveTexture(GL_TEXTURE15);
+	glBindTexture(GL_TEXTURE_2D, depthMap);
 
 	source.sponzaModel->Draw(*(source.lightingShader));
 
@@ -279,61 +301,6 @@ void RenderScene(const SceneResources& source, const glm::mat4& view, const glm:
 	source.backpack->Draw(*(source.lightingShader));
 	glStencilMask(0x00);
 
-	// SPONZA RENDER
-
-	source.simpleShader->use();
-	source.simpleShader->setMat4("view", view);
-	source.simpleShader->setMat4("projection", projection);
-
-	glBindVertexArray(source.cubeVAO);
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, source.cubeTexture);
-	model = glm::mat4(1.0f);
-	model = glm::translate(model, glm::vec3(-1.0f, 0.5f, -1.0f));
-	source.simpleShader->setMat4("model", model);
-
-	glDrawArrays(GL_TRIANGLES, 0, 36);
-	model = glm::mat4(1.0f);
-	model = glm::translate(model, glm::vec3(2.0f, 0.5f, 0.0f));
-	source.simpleShader->setMat4("model", model);
-	glDrawArrays(GL_TRIANGLES, 0, 36);
-
-
-	// VEGETATION
-
-	glDisable(GL_CULL_FACE);
-
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-	glBindVertexArray(source.vegVAO);
-	glBindTexture(GL_TEXTURE_2D, source.vegTexture);
-
-
-	std::map<float, glm::vec3> sorted;
-	for (unsigned int i = 0; i < source.vegetation->size(); ++i)
-	{
-		float dist = glm::length(viewPos - (*source.vegetation)[i]);
-		sorted[-dist] = (*source.vegetation)[i];
-	}
-
-	for (auto a : sorted)
-	{
-		model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(0.0, 0.5, 0.0) + a.second);
-		source.simpleShader->setMat4("model", model);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
-	}
-
-	glEnable(GL_CULL_FACE);
-	glDisable(GL_BLEND);
-
-	// PLANE RENDER
-	glBindVertexArray(source.planeVAO);
-	glBindTexture(GL_TEXTURE_2D, source.floorTexture);
-	source.simpleShader->setMat4("model", glm::mat4(1.0f));
-	glDrawArrays(GL_TRIANGLES, 0, 6);
-
 	//OUTLINE
 
 	source.outlineShader->use();
@@ -350,8 +317,6 @@ void RenderScene(const SceneResources& source, const glm::mat4& view, const glm:
 	{
 		source.backpack->DrawOutlined(*(source.outlineShader));
 	}
-
-
 }
 
 int main()
@@ -405,74 +370,8 @@ int main()
 		glm::vec3(9.8f,7.9f,-0.6f),
 		glm::vec3(-15.0f,6.7f,4.0f)
 	};
-
-	float cubeVertices[] = {
-		// Back face
-		-0.5f, -0.5f, -0.5f,  0.0f, 0.0f, // Bottom-left
-		 0.5f,  0.5f, -0.5f,  1.0f, 1.0f, // top-right
-		 0.5f, -0.5f, -0.5f,  1.0f, 0.0f, // bottom-right         
-		 0.5f,  0.5f, -0.5f,  1.0f, 1.0f, // top-right
-		-0.5f, -0.5f, -0.5f,  0.0f, 0.0f, // bottom-left
-		-0.5f,  0.5f, -0.5f,  0.0f, 1.0f, // top-left
-		// Front face
-		-0.5f, -0.5f,  0.5f,  0.0f, 0.0f, // bottom-left
-		 0.5f, -0.5f,  0.5f,  1.0f, 0.0f, // bottom-right
-		 0.5f,  0.5f,  0.5f,  1.0f, 1.0f, // top-right
-		 0.5f,  0.5f,  0.5f,  1.0f, 1.0f, // top-right
-		-0.5f,  0.5f,  0.5f,  0.0f, 1.0f, // top-left
-		-0.5f, -0.5f,  0.5f,  0.0f, 0.0f, // bottom-left
-		// Left face
-		-0.5f,  0.5f,  0.5f,  1.0f, 0.0f, // top-right
-		-0.5f,  0.5f, -0.5f,  1.0f, 1.0f, // top-left
-		-0.5f, -0.5f, -0.5f,  0.0f, 1.0f, // bottom-left
-		-0.5f, -0.5f, -0.5f,  0.0f, 1.0f, // bottom-left
-		-0.5f, -0.5f,  0.5f,  0.0f, 0.0f, // bottom-right
-		-0.5f,  0.5f,  0.5f,  1.0f, 0.0f, // top-right
-		// Right face
-		 0.5f,  0.5f,  0.5f,  1.0f, 0.0f, // top-left
-		 0.5f, -0.5f, -0.5f,  0.0f, 1.0f, // bottom-right
-		 0.5f,  0.5f, -0.5f,  1.0f, 1.0f, // top-right         
-		 0.5f, -0.5f, -0.5f,  0.0f, 1.0f, // bottom-right
-		 0.5f,  0.5f,  0.5f,  1.0f, 0.0f, // top-left
-		 0.5f, -0.5f,  0.5f,  0.0f, 0.0f, // bottom-left     
-		 // Bottom face
-		 -0.5f, -0.5f, -0.5f,  0.0f, 1.0f, // top-right
-		  0.5f, -0.5f, -0.5f,  1.0f, 1.0f, // top-left
-		  0.5f, -0.5f,  0.5f,  1.0f, 0.0f, // bottom-left
-		  0.5f, -0.5f,  0.5f,  1.0f, 0.0f, // bottom-left
-		 -0.5f, -0.5f,  0.5f,  0.0f, 0.0f, // bottom-right
-		 -0.5f, -0.5f, -0.5f,  0.0f, 1.0f, // top-right
-		 // Top face
-		 -0.5f,  0.5f, -0.5f,  0.0f, 1.0f, // top-left
-		  0.5f,  0.5f,  0.5f,  1.0f, 0.0f, // bottom-right
-		  0.5f,  0.5f, -0.5f,  1.0f, 1.0f, // top-right     
-		  0.5f,  0.5f,  0.5f,  1.0f, 0.0f, // bottom-right
-		 -0.5f,  0.5f, -0.5f,  0.0f, 1.0f, // top-left
-		 -0.5f,  0.5f,  0.5f,  0.0f, 0.0f  // bottom-left        
-	};
-	float planeVertices[] =
+	float quadVertices[] = 
 	{
-		 5.0f, -0.5f,  5.0f,  2.0f, 0.0f,
-		-5.0f, -0.5f,  5.0f,  0.0f, 0.0f,
-		-5.0f, -0.5f, -5.0f,  0.0f, 2.0f,
-
-		 5.0f, -0.5f,  5.0f,  2.0f, 0.0f,
-		-5.0f, -0.5f, -5.0f,  0.0f, 2.0f,
-		 5.0f, -0.5f, -5.0f,  2.0f, 2.0f
-
-	};
-	float transparentVertices[] = {
-		// positions         // texture Coords (swapped y coordinates because texture is flipped upside down)
-		0.0f,  0.5f,  0.0f,  0.0f,  0.0f,
-		0.0f, -0.5f,  0.0f,  0.0f,  1.0f,
-		1.0f, -0.5f,  0.0f,  1.0f,  1.0f,
-
-		0.0f,  0.5f,  0.0f,  0.0f,  0.0f,
-		1.0f, -0.5f,  0.0f,  1.0f,  1.0f,
-		1.0f,  0.5f,  0.0f,  1.0f,  0.0f
-	};
-
-	float quadVertices[] = {
 		// positions   // texCoords
 		-1.0f,  1.0f,  0.0f, 1.0f,
 		-1.0f, -1.0f,  0.0f, 0.0f,
@@ -494,46 +393,6 @@ int main()
 		0.3f, 1.0f, 1.0f, 1.0f
 	};
 
-	std::vector<glm::vec3> vegetation;
-	vegetation.push_back(glm::vec3(-1.5f, 0.0f, -0.48f));
-	vegetation.push_back(glm::vec3(1.5f, 0.0f, 0.51f));
-	vegetation.push_back(glm::vec3(0.0f, 0.0f, 0.7f));
-	vegetation.push_back(glm::vec3(-0.3f, 0.0f, -2.3f));
-	vegetation.push_back(glm::vec3(0.5f, 0.0f, -0.6f));
-
-
-	unsigned int cubeVAO, cubeVBO;
-	glGenBuffers(1, &cubeVBO);
-	glGenVertexArrays(1, &cubeVAO);
-	glBindVertexArray(cubeVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVertices), &cubeVertices, GL_STATIC_DRAW);
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(0));
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3*sizeof(float)));
-
-	unsigned int planeVAO, planeVBO;
-	glGenBuffers(1, &planeVBO);
-	glGenVertexArrays(1, &planeVAO);
-	glBindVertexArray(planeVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, planeVBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(planeVertices), &planeVertices, GL_STATIC_DRAW);
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(0));
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)( 3 * sizeof(float)));
-
-	unsigned int vegVAO, vegVBO;
-	glGenBuffers(1, &vegVBO);
-	glGenVertexArrays(1, &vegVAO);
-	glBindVertexArray(vegVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, vegVBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(transparentVertices), &transparentVertices, GL_STATIC_DRAW);
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(0));
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
 
 	unsigned int quadVAO, quadVBO;
 	glGenVertexArrays(1, &quadVAO);
@@ -612,25 +471,43 @@ int main()
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+
+	// SHADOW PASS FRAMEBUFFER INITIALIZATION
+
+	unsigned int depthMapFBO;
+	glGenFramebuffers(1, &depthMapFBO);
+	glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+
+	glGenTextures(1, &depthMap);
+	glBindTexture(GL_TEXTURE_2D, depthMap);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+	float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
+	glDrawBuffer(GL_NONE);
+	glReadBuffer(GL_NONE);
+
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
 	Shader lightingShader("assets/shaders/lightingShader.vert", "assets/shaders/lightingShader.frag");
-	Shader simpleShader("assets/shaders/simpleshader.vert", "assets/shaders/simpleshader.frag");
 	Shader outlineShader("assets/shaders/outline.vert", "assets/shaders/outline.frag");
 	Shader screenShader("assets/shaders/screenshader.vert", "assets/shaders/screenshader.frag");
 	Shader mirrorShader("assets/shaders/mirror.vert", "assets/shaders/mirror.frag");
-
+	Shader shadowShader("assets/shaders/shadowShader.vert", "assets/shaders/shadowShader.frag");
 	Model sponzaModel("assets/models/sponza/sponza.obj");
 
 	stbi_set_flip_vertically_on_load(true);
 
 	Model backPack("assets/models/backpack/backpack.obj");
 	
-	unsigned int floorTexture = loadTexture("assets/textures/metal.png", true);
-	unsigned int cubeTexture = loadTexture("assets/textures/container.jpg", true);
-	unsigned int vegTexture = loadTexture("assets/textures/window.png", true);
-
-	simpleShader.use();
-	simpleShader.setInt("texture1", 0);
-
 	screenShader.use();
 	screenShader.setInt("screenTexture", 0);
 	screenShader.setBool("blur", blur);
@@ -641,14 +518,15 @@ int main()
 	lightingShader.use();
 	lightingShader.setFloat("shininess", 64.0f);
 	lightingShader.setBool("blinn", blinn);
+	lightingShader.setInt("shadowMap", 15);
 
 	for (int i = 0; i < 4; ++i)
 	{
 		std::string s = "pointLights[" + std::to_string(i) + "].";
 		lightingShader.setVec3(s + "position", pointLightPositions[i]);
 		lightingShader.setVec3(s + "ambient", 0.0f, 0.0f, 0.0f);
-		lightingShader.setVec3(s + "diffuse", 0.5f, 0.5f, 0.5f);
-		lightingShader.setVec3(s + "specular", 0.4f, 0.4f, 0.4f);
+		lightingShader.setVec3(s + "diffuse", 0.0f, 0.0f, 0.0f);
+		lightingShader.setVec3(s + "specular", 0.0f, 0.0f, 0.0f);
 		lightingShader.setFloat(s + "constant", 1.0f);
 		lightingShader.setFloat(s + "linear", 0.0f);
 		lightingShader.setFloat(s + "quadratic", 1.0f);
@@ -661,15 +539,8 @@ int main()
 	myResources.backpack = &backPack;
 	myResources.sponzaModel = &sponzaModel;
 	myResources.lightingShader = &lightingShader;
-	myResources.simpleShader = &simpleShader;
 	myResources.outlineShader = &outlineShader;
-	myResources.cubeTexture = cubeTexture;
-	myResources.floorTexture = floorTexture;
-	myResources.vegTexture = vegTexture;
-	myResources.vegetation = &vegetation;
-	myResources.cubeVAO = cubeVAO;
-	myResources.planeVAO = planeVAO;
-	myResources.vegVAO = vegVAO;
+	myResources.shadowShader = &shadowShader;
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -681,6 +552,10 @@ int main()
 		lastFrame = currentFrame;
 
 		processInput(window);
+
+		glm::vec3 lightDir = glm::normalize(dirLightDirection);
+		glm::vec3 sceneCenter(0.0f);
+		glm::vec3 lightPos = sceneCenter - lightDir * multiplier;
 
 
 		// IMGUI INITIALIZATION
@@ -702,6 +577,9 @@ int main()
 		ImGui::Text("Directional Light");
 		ImGui::SliderFloat("Power", &powerOfDirectional, 0.0f, 5.0f);
 		ImGui::SliderFloat("Shininess", &shine, 1.0f, 128.0f);
+		ImGui::SliderFloat3("Direction", glm::value_ptr(dirLightDirection), -1.0f, 1.0f);
+		ImGui::SliderFloat("multiplier", &multiplier, 30.0f, 100.f);
+		ImGui::Checkbox("Show Shadow", &showShadow);
 
 		ImGui::Separator();
 		ImGui::Text("HDR");
@@ -710,7 +588,36 @@ int main()
 
 		ImGui::End();
 
+		// SHADOW PASS
+		float near_plane = 1.0f, far_plane = 80.0f;
+
+		glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+		glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+
+		glClear(GL_DEPTH_BUFFER_BIT);
+		glDisable(GL_STENCIL_TEST);
+		glDisable(GL_CULL_FACE);
+	
+		//dirLightDirection = glm::vec3(dirLightDirection.x, sin(glfwGetTime()) * 0.5f, cos(glfwGetTime()) * 0.5f);
+
+
+
+		glm::mat4 lightProjection = glm::ortho(-35.0f, 35.0f, -35.0f, 35.0f, near_plane, far_plane);
+		glm::mat4 lightView = glm::lookAt(lightPos,sceneCenter, glm::vec3(0.0, 1.0, 0.0));
+
+		glm::mat4 lightSpace = lightProjection * lightView;
+
+		RenderShadowPass(myResources, lightSpace);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
 		// POST PROCESSING FRAMEBUFFER
+		glEnable(GL_CULL_FACE);
+		glCullFace(GL_BACK);
+
+		lightingShader.use();
+		glActiveTexture(GL_TEXTURE15);
+		glBindTexture(GL_TEXTURE_2D, depthMap);
 
 		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
 		glViewport(0, 0, frameBufferWidth, frameBufferHeight);
@@ -718,7 +625,7 @@ int main()
 		glm::mat4 view = camera.GetViewMatrix();
 		glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), static_cast<float>(frameBufferWidth) / static_cast<float>(frameBufferHeight), 0.1f, 500.0f);
 
-		RenderScene(myResources, view, projection, camera.Position);
+		RenderScene(myResources, view, projection, camera.Position, lightSpace);
 
 
 		// MIRROR PASS
@@ -733,7 +640,7 @@ int main()
 			view = glm::lookAt(camera.Position, camera.Position + rearFront, rearUp);
 			projection = glm::perspective(glm::radians(camera.Zoom), static_cast<float>(MIRROR_WIDTH) / static_cast<float>(MIRROR_HEIGHT), 0.1f, 500.0f);
 
-			RenderScene(myResources, view, projection, camera.Position);
+			RenderScene(myResources, view, projection, camera.Position, lightSpace);
 		}
 
 		// POST PROCESSING
@@ -746,17 +653,21 @@ int main()
 		screenShader.use();
 		screenShader.setBool("blur", blur);
 		screenShader.setFloat("exposure", exposure);
+		screenShader.setFloat("far_plane", far_plane);
+		screenShader.setFloat("near_plane", near_plane);
 		glBindVertexArray(quadVAO);
 		glDisable(GL_DEPTH_TEST);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
+		//glBindTexture(GL_TEXTURE_2D, depthMap);
+
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 
 		// WINDOW RENDER
 
 		if(mirrored)
 		{
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);	
 
 			mirrorShader.use();
 			mirrorShader.setFloat("exposure", exposure);

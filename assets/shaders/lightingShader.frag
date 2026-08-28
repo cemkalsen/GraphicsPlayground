@@ -5,8 +5,13 @@ out vec4 FragColor;
 in vec3 Normal;
 in vec3 Pos;
 in vec2 TexCoords;
+in vec4 PosLightSpace;
+
 uniform vec3 viewPos;
 uniform bool blinn;
+uniform bool showShadow;
+
+uniform sampler2D shadowMap;
 
 uniform sampler2D texture_diffuse1;
 uniform sampler2D texture_specular1;
@@ -59,6 +64,42 @@ struct SpotLight
 uniform SpotLight spotLight;
 
 
+
+float ShadowCalculation(vec4 fragPosLightSpace, vec3 lightDir, vec3 normal)
+{
+
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    projCoords = projCoords * 0.5 + 0.5;
+
+    float closestDist = texture(shadowMap, projCoords.xy).r;
+
+    float currentDepth = projCoords.z;
+
+
+    float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.005);  
+ 
+    float shadow = 0.0;
+
+    vec2 texelSize = 1.0f / textureSize(shadowMap, 0);
+
+    for(int x = -1; x <= 1; ++x)
+    {
+        for(int y = -1; y <= 1; ++y)
+        {
+            float pcfDepth  = texture(shadowMap, projCoords.xy + vec2(x,y)*texelSize).r;
+            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+        }
+    }
+
+    if(projCoords.z > 1.0)
+        shadow = 0.0;
+
+        shadow /= 9;
+
+    return shadow;
+}
+
+
 vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
 {
     vec3 lightDir = normalize(-light.direction);
@@ -78,7 +119,9 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
     vec3 diffuse = light.diffuse * texture(texture_diffuse1, TexCoords).rgb * diff;
     vec3 specular = light.specular * texture(texture_specular1, TexCoords).rgb * spec;
 
-    return (ambient + diffuse + specular);
+    vec3 lighting = ambient + (1.0 - ShadowCalculation(PosLightSpace, lightDir, normal)) * (diffuse + specular); 
+
+    return lighting;
 }
 
 
@@ -159,7 +202,6 @@ void main()
 {
     vec3 norm = normalize(Normal);
     vec3 viewDir = normalize(viewPos - Pos);
-
     vec3 result = CalcDirLight(dirLight, norm, viewDir);
     //vec3 result = vec3(0.0f);
 
@@ -169,7 +211,13 @@ void main()
     //result += CalcSpotLight( spotLight, norm, Pos, viewDir);
 
     FragColor = vec4(result, 1.0f);
-	
-  //float depth = LinearizeDepth(gl_FragCoord.z) / far;
-  //  FragColor = vec4(vec3(depth), 1.0);
+
+    if(showShadow)
+    {
+      //float depth = LinearizeDepth(gl_FragCoord.z) / far;
+      float shadowed = ShadowCalculation(PosLightSpace,normalize(-dirLight.direction),norm);
+      FragColor = vec4(vec3(1.0 - shadowed), 1.0);
+    }
+
+
 }
