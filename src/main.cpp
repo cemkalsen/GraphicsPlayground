@@ -40,7 +40,9 @@ bool blinn = false;
 bool blur = false;
 bool mirrored = false;
 bool showShadow = false;
+int refractMode = 0;
 float exposure = 2.5f;
+float speedMultiplier = 1.0f;
 
 float multiplier = 55.0f;
 
@@ -48,7 +50,7 @@ unsigned int textureColorBuffer, textureColorBuffer2, depthMap;
 unsigned int rbo, rbo2;
 
 float shine = 64.0f;
-glm::vec3 dirLightDirection = glm::vec3(-0.4f, -1.0f, -0.3f);
+glm::vec3 dirLightDirection = glm::vec3(0.0f, -1.0f, 0.0f);
 glm::vec3 dirLightAmbient = glm::vec3(0.02f);
 glm::vec3 dirLightDiffuse = glm::vec3(0.35f);
 glm::vec3 dirLightSpecular = glm::vec3(0.35f);
@@ -212,14 +214,58 @@ unsigned int loadTexture(const char* path, bool gamma = false)
 	return textureID;
 }
 
+unsigned int loadCubemap(std::vector<std::string> faces)
+{
+	unsigned int cubemapID;
+	glGenTextures(1, &cubemapID);
+	glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapID);
+
+	int width, height, nrChannels;
+	unsigned char* data;
+
+	for (unsigned int i = 0; i < faces.size(); ++i)
+	{
+		data = stbi_load(faces[i].c_str(), &width, &height, &nrChannels, 0);
+
+		if (data)
+		{
+			glTexImage2D(
+				GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+				0, GL_SRGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data
+			);
+
+			stbi_image_free(data);
+		}
+		else
+		{
+			std::cout << "Cubemap tex failed to laod at path: " << faces[i] << std::endl;
+			stbi_image_free(data);
+		}
+	}
+	
+	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+
+	return cubemapID;
+}
+
 struct SceneResources
 {
 	Shader* lightingShader;
 	Shader* outlineShader;
 	Shader* shadowShader;
+	Shader* skyboxShader;
+	Shader* reflectShader;
 
 	Model* sponzaModel;
 	Model* backpack;
+
+	unsigned int skyboxVAO;
+	unsigned int skyboxTexture;
 	
 };
 
@@ -284,8 +330,26 @@ void RenderScene(const SceneResources& source, const glm::mat4& view, const glm:
 
 	glActiveTexture(GL_TEXTURE15);
 	glBindTexture(GL_TEXTURE_2D, depthMap);
-
 	source.sponzaModel->Draw(*(source.lightingShader));
+
+
+	//skybox rendering
+	
+	glDepthFunc(GL_LEQUAL);
+	glDisable(GL_CULL_FACE);
+	source.skyboxShader->use();
+
+	glm::mat4 newview = glm::mat4(glm::mat3(view));
+	source.skyboxShader->setMat4("projection", projection);
+	source.skyboxShader->setMat4("view", newview);
+
+	glBindVertexArray(source.skyboxVAO);
+	glActiveTexture(GL_TEXTURE16);
+	glBindTexture(GL_TEXTURE_CUBE_MAP, source.skyboxTexture);
+	glDrawArrays(GL_TRIANGLES, 0, 36);
+	glDepthFunc(GL_LESS);
+	glEnable(GL_CULL_FACE);
+
 
 
 	// BACKPACK RENDER
@@ -294,12 +358,20 @@ void RenderScene(const SceneResources& source, const glm::mat4& view, const glm:
 	glStencilMask(0xFF);
 
 	model = glm::mat4(1.0f);
-	model = glm::translate(model, glm::vec3(5.0f, 0.6f, 0.0f));
+	model = glm::translate(model, glm::vec3(0.0f, 60.0f, 0.0f));
 	model = glm::scale(model, glm::vec3(0.2f));
-	source.lightingShader->setMat4("model", model);
-	source.lightingShader->setMat3("modelMatrix", glm::mat3(glm::transpose(glm::inverse(model))));
-	source.backpack->Draw(*(source.lightingShader));
+	source.reflectShader->use();
+	source.reflectShader->setMat4("model", model);
+	source.reflectShader->setMat4("view", view);
+	source.reflectShader->setMat4("projection", projection);
+	source.reflectShader->setMat3("modelMatrix", glm::mat3(glm::transpose(glm::inverse(model))));
+	source.reflectShader->setVec3("viewPos", viewPos);
+	source.reflectShader->setInt("refractMode", refractMode);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_CUBE_MAP, source.skyboxTexture);
+	source.backpack->Draw(*(source.reflectShader));
 	glStencilMask(0x00);
+
 
 	//OUTLINE
 
@@ -370,7 +442,7 @@ int main()
 		glm::vec3(9.8f,7.9f,-0.6f),
 		glm::vec3(-15.0f,6.7f,4.0f)
 	};
-	float quadVertices[] = 
+	float quadVertices[] =
 	{
 		// positions   // texCoords
 		-1.0f,  1.0f,  0.0f, 1.0f,
@@ -393,6 +465,50 @@ int main()
 		0.3f, 1.0f, 1.0f, 1.0f
 	};
 
+	float skyboxVertices[] = {
+		// positions          
+		-1.0f,  1.0f, -1.0f,
+		-1.0f, -1.0f, -1.0f,
+		 1.0f, -1.0f, -1.0f,
+		 1.0f, -1.0f, -1.0f,
+		 1.0f,  1.0f, -1.0f,
+		-1.0f,  1.0f, -1.0f,
+
+		-1.0f, -1.0f,  1.0f,
+		-1.0f, -1.0f, -1.0f,
+		-1.0f,  1.0f, -1.0f,
+		-1.0f,  1.0f, -1.0f,
+		-1.0f,  1.0f,  1.0f,
+		-1.0f, -1.0f,  1.0f,
+
+		 1.0f, -1.0f, -1.0f,
+		 1.0f, -1.0f,  1.0f,
+		 1.0f,  1.0f,  1.0f,
+		 1.0f,  1.0f,  1.0f,
+		 1.0f,  1.0f, -1.0f,
+		 1.0f, -1.0f, -1.0f,
+
+		-1.0f, -1.0f,  1.0f,
+		-1.0f,  1.0f,  1.0f,
+		 1.0f,  1.0f,  1.0f,
+		 1.0f,  1.0f,  1.0f,
+		 1.0f, -1.0f,  1.0f,
+		-1.0f, -1.0f,  1.0f,
+
+		-1.0f,  1.0f, -1.0f,
+		 1.0f,  1.0f, -1.0f,
+		 1.0f,  1.0f,  1.0f,
+		 1.0f,  1.0f,  1.0f,
+		-1.0f,  1.0f,  1.0f,
+		-1.0f,  1.0f, -1.0f,
+
+		-1.0f, -1.0f, -1.0f,
+		-1.0f, -1.0f,  1.0f,
+		 1.0f, -1.0f, -1.0f,
+		 1.0f, -1.0f, -1.0f,
+		-1.0f, -1.0f,  1.0f,
+		 1.0f, -1.0f,  1.0f
+	};
 
 	unsigned int quadVAO, quadVBO;
 	glGenVertexArrays(1, &quadVAO);
@@ -403,7 +519,7 @@ int main()
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(0));
 	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2*sizeof(float)));
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
 
 	unsigned int uiVAO, uiVBO;
 	glGenVertexArrays(1, &uiVAO);
@@ -415,7 +531,15 @@ int main()
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(0));
 	glEnableVertexAttribArray(1);
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-	
+
+	unsigned int skyVAO, skyVBO;
+	glGenVertexArrays(1, &skyVAO);
+	glBindVertexArray(skyVAO);
+	glGenBuffers(1, &skyVBO);
+	glBindBuffer(GL_ARRAY_BUFFER, skyVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), &skyboxVertices, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)(0));
 
 	// POST PROCESSING FRAMEBUFFER INITIALIZATION
 
@@ -425,7 +549,7 @@ int main()
 
 	glGenTextures(1, &textureColorBuffer);
 	glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 800, 600, 0, GL_RGB, GL_FLOAT , NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 800, 600, 0, GL_RGB, GL_FLOAT, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -441,7 +565,7 @@ int main()
 
 	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 		std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
-	
+
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	// WINDOW FRAMEBUFFER INITIALIZATLION
@@ -497,13 +621,35 @@ int main()
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+
+	// CUBEMAP TEXTURE INITIALIZATION
+
+
+	std::vector<std::string> faces
+	{
+		"assets/textures/skybox/right.jpg",
+		"assets/textures/skybox/left.jpg",
+		"assets/textures/skybox/top.jpg",
+		"assets/textures/skybox/bottom.jpg",
+		"assets/textures/skybox/front.jpg",
+		"assets/textures/skybox/back.jpg",
+	};
+
+	unsigned int cubemapTexture = loadCubemap(faces);
+
+
+
+    // SHADERS AND MODELS INITIALIZATION
+
 	Shader lightingShader("assets/shaders/lightingShader.vert", "assets/shaders/lightingShader.frag");
 	Shader outlineShader("assets/shaders/outline.vert", "assets/shaders/outline.frag");
 	Shader screenShader("assets/shaders/screenshader.vert", "assets/shaders/screenshader.frag");
 	Shader mirrorShader("assets/shaders/mirror.vert", "assets/shaders/mirror.frag");
 	Shader shadowShader("assets/shaders/shadowShader.vert", "assets/shaders/shadowShader.frag");
+	Shader skyboxShader("assets/shaders/skybox.vert", "assets/shaders/skybox.frag");
+	Shader reflectShader("assets/shaders/reflect.vert", "assets/shaders/reflect.frag");
+	
 	Model sponzaModel("assets/models/sponza/sponza.obj");
-
 	stbi_set_flip_vertically_on_load(true);
 
 	Model backPack("assets/models/backpack/backpack.obj");
@@ -514,6 +660,14 @@ int main()
 
 	mirrorShader.use();
 	mirrorShader.setInt("mirrorTexture", 0);
+
+	skyboxShader.use();
+	skyboxShader.setInt("skybox", 0);
+
+
+	reflectShader.use();
+	reflectShader.setInt("cubeMap", 16);
+
 
 	lightingShader.use();
 	lightingShader.setFloat("shininess", 64.0f);
@@ -541,6 +695,10 @@ int main()
 	myResources.lightingShader = &lightingShader;
 	myResources.outlineShader = &outlineShader;
 	myResources.shadowShader = &shadowShader;
+	myResources.skyboxShader = &skyboxShader;
+	myResources.skyboxTexture = cubemapTexture;
+	myResources.skyboxVAO = skyVAO;
+	myResources.reflectShader = &reflectShader;
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -572,6 +730,10 @@ int main()
 		ImGui::Checkbox("Blinn-Phong", &blinn);
 		ImGui::Checkbox("Blur", &blur);
 		ImGui::Checkbox("Activate Mirror", &mirrored);
+		
+		ImGui::Separator();
+		ImGui::Text("Camera");
+		ImGui::SliderFloat("Camera Speed", &speedMultiplier, 1.0f, 10.0f);
 
 		ImGui::Separator();
 		ImGui::Text("Directional Light");
@@ -582,6 +744,11 @@ int main()
 		ImGui::Checkbox("Show Shadow", &showShadow);
 
 		ImGui::Separator();
+		ImGui::Text("Backpack");
+		ImGui::RadioButton("Reflect Mode", &refractMode, 0); ImGui::SameLine();
+		ImGui::RadioButton("Refract Mode", &refractMode, 1);
+
+		ImGui::Separator();
 		ImGui::Text("HDR");
 		ImGui::SliderFloat("Exposure", &exposure, 0.1f, 5.0f);
 
@@ -590,6 +757,8 @@ int main()
 
 		// SHADOW PASS
 		float near_plane = 1.0f, far_plane = 80.0f;
+		float originalSpeed = 2.5f;
+		camera.MovementSpeed = originalSpeed * speedMultiplier;
 
 		glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
 		glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
