@@ -389,8 +389,6 @@ void RenderScene(const SceneResources& source, const glm::mat4& view, const glm:
 
 	source.lightingShader->setVec3("viewPos", viewPos);
 
-	source.lightingShader->setMat4("view", view);
-	source.lightingShader->setMat4("projection", projection);
 
 	glm::mat4 model = glm::mat4(1.0f);
 	model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
@@ -432,8 +430,6 @@ void RenderScene(const SceneResources& source, const glm::mat4& view, const glm:
 	model = glm::scale(model, glm::vec3(0.2f));
 	source.reflectShader->use();
 	source.reflectShader->setMat4("model", model);
-	source.reflectShader->setMat4("view", view);
-	source.reflectShader->setMat4("projection", projection);
 	source.reflectShader->setMat3("modelMatrix", glm::mat3(glm::transpose(glm::inverse(model))));
 	source.reflectShader->setVec3("viewPos", viewPos);
 	source.reflectShader->setInt("refractMode", refractMode);
@@ -446,8 +442,6 @@ void RenderScene(const SceneResources& source, const glm::mat4& view, const glm:
 	//OUTLINE
 
 	source.outlineShader->use();
-	source.outlineShader->setMat4("view", view);
-	source.outlineShader->setMat4("projection", projection);
 
 	model = glm::mat4(1.0f);
 	model = glm::translate(model, glm::vec3(5.0f, 0.6f, 0.0f));
@@ -765,6 +759,26 @@ int main()
 
 	}
 
+
+	// UNIFORM BUFFER SETUP
+
+	unsigned int uniformBufferLighting = glGetUniformBlockIndex(lightingShader.ID, "Matrices");
+	unsigned int uniformBufferOutline = glGetUniformBlockIndex(outlineShader.ID, "Matrices");
+	unsigned int uniformBufferReflect = glGetUniformBlockIndex(reflectShader.ID, "Matrices");
+
+	glUniformBlockBinding(lightingShader.ID, uniformBufferLighting, 0);
+	glUniformBlockBinding(outlineShader.ID, uniformBufferOutline, 0);
+	glUniformBlockBinding(reflectShader.ID, uniformBufferReflect, 0);
+
+	unsigned int uboMatrices;
+	glGenBuffers(1, &uboMatrices);
+	glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
+	glBufferData(GL_UNIFORM_BUFFER, 2 * sizeof(glm::mat4), NULL, GL_STATIC_DRAW);
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+	glBindBufferRange(GL_UNIFORM_BUFFER, 0, uboMatrices, 0, 2 * sizeof(glm::mat4));
+
+
 	// SCENE SETUP
 
 	SceneResources myResources;
@@ -867,8 +881,13 @@ int main()
 		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
 		glViewport(0, 0, frameBufferWidth, frameBufferHeight);
 
+
 		glm::mat4 view = camera.GetViewMatrix();
 		glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), static_cast<float>(frameBufferWidth) / static_cast<float>(frameBufferHeight), 0.1f, 500.0f);
+		glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(projection));
+		glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(view));
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		RenderScene(myResources, view, projection, camera.Position, lightSpace);
 

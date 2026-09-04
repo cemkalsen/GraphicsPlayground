@@ -8,12 +8,15 @@ out vec3 Pos;
 out vec2 TexCoords;
 out vec4 PosLightSpace;
 
-uniform mat4 projection;
-uniform mat4 view;
 uniform mat4 model;
 uniform mat3 modelMatrix;
 uniform mat4 lightSpaceMatrix;
 
+layout (std140) uniform Matrices
+{
+	mat4 projection;
+	mat4 view;
+};
 
 void main()
 {
