@@ -329,7 +329,7 @@ struct SceneResources
 	Shader* outlineShader;
 	Shader* shadowShader;
 	Shader* skyboxShader;
-	Shader* reflectShader;
+	Shader* backpackShader;
 
 	Model* sponzaModel;
 	Model* backpack;
@@ -384,9 +384,7 @@ void RenderScene(const SceneResources& source, const glm::mat4& view, const glm:
 	source.lightingShader->setVec3("dirLight.ambient", dirLightAmbient * powerOfDirectional);
 	source.lightingShader->setVec3("dirLight.diffuse", dirLightDiffuse * powerOfDirectional);
 	source.lightingShader->setVec3("dirLight.specular", dirLightSpecular * powerOfDirectional);
-
 	source.lightingShader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
-
 	source.lightingShader->setVec3("viewPos", viewPos);
 
 
@@ -428,14 +426,15 @@ void RenderScene(const SceneResources& source, const glm::mat4& view, const glm:
 	model = glm::mat4(1.0f);
 	model = glm::translate(model, glm::vec3(0.0f, 60.0f, 0.0f));
 	model = glm::scale(model, glm::vec3(0.2f));
-	source.reflectShader->use();
-	source.reflectShader->setMat4("model", model);
-	source.reflectShader->setMat3("modelMatrix", glm::mat3(glm::transpose(glm::inverse(model))));
-	source.reflectShader->setVec3("viewPos", viewPos);
-	source.reflectShader->setInt("refractMode", refractMode);
+	source.backpackShader->use();
+	source.backpackShader->setMat4("model", model);
+	source.backpackShader->setFloat("time", glfwGetTime());
+	source.backpackShader->setMat3("modelMatrix", glm::mat3(glm::transpose(glm::inverse(model))));
+	source.backpackShader->setVec3("viewPos", viewPos);
+	source.backpackShader->setInt("refractMode", refractMode);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_CUBE_MAP, source.skyboxTexture);
-	source.backpack->Draw(*(source.reflectShader));
+	source.backpack->Draw(*(source.backpackShader));
 	glStencilMask(0x00);
 
 
@@ -719,7 +718,7 @@ int main()
 	Shader mirrorShader("assets/shaders/mirror.vert", "assets/shaders/mirror.frag");
 	Shader shadowShader("assets/shaders/shadowShader.vert", "assets/shaders/shadowShader.frag");
 	Shader skyboxShader("assets/shaders/skybox.vert", "assets/shaders/skybox.frag");
-	Shader reflectShader("assets/shaders/reflect.vert", "assets/shaders/reflect.frag");
+	Shader backpackShader("assets/shaders/reflect.vert", "assets/shaders/reflect.frag", "assets/shaders/reflect.geom");
 	
 	Model sponzaModel("assets/models/sponza/sponza.obj");
 	stbi_set_flip_vertically_on_load(true);
@@ -737,8 +736,8 @@ int main()
 	skyboxShader.setInt("skybox", 0);
 
 
-	reflectShader.use();
-	reflectShader.setInt("cubeMap", 16);
+	backpackShader.use();
+	backpackShader.setInt("cubeMap", 16);
 
 
 	lightingShader.use();
@@ -764,11 +763,11 @@ int main()
 
 	unsigned int uniformBufferLighting = glGetUniformBlockIndex(lightingShader.ID, "Matrices");
 	unsigned int uniformBufferOutline = glGetUniformBlockIndex(outlineShader.ID, "Matrices");
-	unsigned int uniformBufferReflect = glGetUniformBlockIndex(reflectShader.ID, "Matrices");
+	unsigned int uniformBufferReflect = glGetUniformBlockIndex(backpackShader.ID, "Matrices");
 
 	glUniformBlockBinding(lightingShader.ID, uniformBufferLighting, 0);
 	glUniformBlockBinding(outlineShader.ID, uniformBufferOutline, 0);
-	glUniformBlockBinding(reflectShader.ID, uniformBufferReflect, 0);
+	glUniformBlockBinding(backpackShader.ID, uniformBufferReflect, 0);
 
 	unsigned int uboMatrices;
 	glGenBuffers(1, &uboMatrices);
@@ -790,7 +789,7 @@ int main()
 	myResources.skyboxShader = &skyboxShader;
 	myResources.skyboxTexture = cubemapTexture;
 	myResources.skyboxVAO = skyVAO;
-	myResources.reflectShader = &reflectShader;
+	myResources.backpackShader = &backpackShader;
 
 	while (!glfwWindowShouldClose(window))
 	{
