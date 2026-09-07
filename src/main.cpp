@@ -40,6 +40,8 @@ bool blinn = false;
 bool blur = false;
 bool mirrored = false;
 bool showShadow = false;
+bool showNormals = false;
+
 int refractMode = 0;
 float exposure = 2.5f;
 float speedMultiplier = 1.0f;
@@ -719,7 +721,9 @@ int main()
 	Shader shadowShader("assets/shaders/shadowShader.vert", "assets/shaders/shadowShader.frag");
 	Shader skyboxShader("assets/shaders/skybox.vert", "assets/shaders/skybox.frag");
 	Shader backpackShader("assets/shaders/reflect.vert", "assets/shaders/reflect.frag", "assets/shaders/reflect.geom");
-	
+	Shader normalShader("assets/shaders/normal.vert", "assets/shaders/normal.frag", "assets/shaders/normal.geom");
+
+
 	Model sponzaModel("assets/models/sponza/sponza.obj");
 	stbi_set_flip_vertically_on_load(true);
 
@@ -764,10 +768,12 @@ int main()
 	unsigned int uniformBufferLighting = glGetUniformBlockIndex(lightingShader.ID, "Matrices");
 	unsigned int uniformBufferOutline = glGetUniformBlockIndex(outlineShader.ID, "Matrices");
 	unsigned int uniformBufferReflect = glGetUniformBlockIndex(backpackShader.ID, "Matrices");
+	unsigned int uniformBufferNormal = glGetUniformBlockIndex(normalShader.ID, "Matrices");
 
 	glUniformBlockBinding(lightingShader.ID, uniformBufferLighting, 0);
 	glUniformBlockBinding(outlineShader.ID, uniformBufferOutline, 0);
 	glUniformBlockBinding(backpackShader.ID, uniformBufferReflect, 0);
+	glUniformBlockBinding(normalShader.ID, uniformBufferNormal, 0);
 
 	unsigned int uboMatrices;
 	glGenBuffers(1, &uboMatrices);
@@ -838,6 +844,7 @@ int main()
 		ImGui::Text("Backpack");
 		ImGui::RadioButton("Reflect Mode", &refractMode, 0); ImGui::SameLine();
 		ImGui::RadioButton("Refract Mode", &refractMode, 1);
+		ImGui::Checkbox("Show Normals", &showNormals);
 
 		ImGui::Separator();
 		ImGui::Text("HDR");
@@ -890,6 +897,18 @@ int main()
 
 		RenderScene(myResources, view, projection, camera.Position, lightSpace);
 
+		// DRAW NORMALS
+
+		if (showNormals)
+		{
+			glm::mat4 model = glm::mat4(1.0f);
+			model = glm::translate(model, glm::vec3(0.0f, 60.0f, 0.0f));
+			model = glm::scale(model, glm::vec3(0.2f));
+			normalShader.use();
+			normalShader.setMat4("model", model);
+			normalShader.setMat3("modelMatrix", glm::mat3(glm::transpose(glm::inverse(model))));
+			backPack.Draw(normalShader);
+		}
 
 		// MIRROR PASS
 
