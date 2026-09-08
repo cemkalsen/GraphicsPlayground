@@ -41,6 +41,7 @@ bool blur = false;
 bool mirrored = false;
 bool showShadow = false;
 bool showNormals = false;
+bool antialiasing = false;
 
 int refractMode = 0;
 float exposure = 2.5f;
@@ -50,6 +51,8 @@ float multiplier = 55.0f;
 
 unsigned int textureColorBuffer, textureColorBuffer2, depthMap;
 unsigned int rbo, rbo2;
+
+unsigned int msTextureColorbuffer, msrbo;
 
 float shine = 64.0f;
 glm::vec3 dirLightDirection = glm::vec3(0.0f, -1.0f, 0.0f);
@@ -139,10 +142,17 @@ void resizeFramebufferAttachments(int width, int height)
 	glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGB, GL_FLOAT, nullptr);
 
+	glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, msTextureColorbuffer);
+	glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 4, GL_RGBA16F, width, height,GL_TRUE);
+
 	glBindRenderbuffer(GL_RENDERBUFFER, rbo);
 	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
 
+	glBindRenderbuffer(GL_RENDERBUFFER, msrbo);
+	glRenderbufferStorageMultisample(GL_RENDERBUFFER, 4, GL_DEPTH24_STENCIL8, width, height);
+
 	glBindTexture(GL_TEXTURE_2D, 0);
+	glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
 	glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
 	glBindTexture(GL_TEXTURE_2D, textureColorBuffer2);
@@ -465,6 +475,7 @@ int main()
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, true);
+	glfwWindowHint(GLFW_SAMPLES, 4);
 
 	GLFWwindow* window = glfwCreateWindow(800, 600, "GraphicsPlayground", NULL, NULL);
 
@@ -615,6 +626,31 @@ int main()
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)(0));
 
+
+	//  MSAA FRAMEBUFFER INITIALIZATION
+
+	unsigned int msFBO;
+	glGenFramebuffers(1, &msFBO);
+	glBindFramebuffer(GL_FRAMEBUFFER, msFBO);
+
+	glGenTextures(1, &msTextureColorbuffer);
+	glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, msTextureColorbuffer);
+	glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 4, GL_RGBA16F, 800, 600, GL_TRUE);
+	glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, msTextureColorbuffer, 0);
+
+	glGenRenderbuffers(1, &msrbo);
+	glBindRenderbuffer(GL_RENDERBUFFER, msrbo);
+	glRenderbufferStorageMultisample(GL_RENDERBUFFER, 4, GL_DEPTH24_STENCIL8, 800, 600);
+	glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, msrbo);
+
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
 	// POST PROCESSING FRAMEBUFFER INITIALIZATION
 
 	unsigned int frameBuffer;
@@ -668,7 +704,6 @@ int main()
 		std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
 
 	// SHADOW PASS FRAMEBUFFER INITIALIZATION
 
@@ -827,7 +862,8 @@ int main()
 		ImGui::Checkbox("Blinn-Phong", &blinn);
 		ImGui::Checkbox("Blur", &blur);
 		ImGui::Checkbox("Activate Mirror", &mirrored);
-		
+		ImGui::Checkbox("Activate Antialisasing", &antialiasing);
+
 		ImGui::Separator();
 		ImGui::Text("Camera");
 		ImGui::SliderFloat("Camera Speed", &speedMultiplier, 1.0f, 10.0f);
@@ -877,6 +913,13 @@ int main()
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		// POST PROCESSING FRAMEBUFFER
+
+
+		if (antialiasing)
+			glEnable(GL_MULTISAMPLE);
+		else
+			glDisable(GL_MULTISAMPLE);
+
 		glEnable(GL_CULL_FACE);
 		glCullFace(GL_BACK);
 
@@ -884,7 +927,7 @@ int main()
 		glActiveTexture(GL_TEXTURE15);
 		glBindTexture(GL_TEXTURE_2D, depthMap);
 
-		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
+		glBindFramebuffer(GL_FRAMEBUFFER, msFBO);
 		glViewport(0, 0, frameBufferWidth, frameBufferHeight);
 
 
@@ -926,6 +969,10 @@ int main()
 		}
 
 		// POST PROCESSING
+
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, msFBO);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, frameBuffer);
+		glBlitFramebuffer(0, 0, frameBufferWidth, frameBufferHeight, 0, 0, frameBufferWidth, frameBufferHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glViewport(0,0,frameBufferWidth,frameBufferHeight);
