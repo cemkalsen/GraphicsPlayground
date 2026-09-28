@@ -6,6 +6,7 @@
 #include "shader.h"
 #include "camera.h"
 #include "model.h"
+#include "gl_debug.h"
 
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
@@ -62,74 +63,6 @@ glm::vec3 dirLightSpecular = glm::vec3(0.35f);
 
 float powerOfDirectional = 1.0f;
 
-
-GLenum glCheckError_(const char* file, int line)
-{
-	GLenum errorCode;
-	while ((errorCode = glGetError()) != GL_NO_ERROR)
-	{
-		std::string error;
-
-		switch (errorCode)
-		{
-		case GL_INVALID_ENUM:                   error = "INVALID_ENUM"; break;
-		case GL_INVALID_VALUE:					error = "INVALID_VALUE"; break;
-		case GL_INVALID_OPERATION:              error = "INVALID_OPERATION"; break;
-		case GL_STACK_OVERFLOW:					error = "STACK_OVERFLOW"; break;
-		case GL_STACK_UNDERFLOW:                error = "STACK_UNDERFLOW"; break;
-		case GL_OUT_OF_MEMORY:                  error = "OUT_OF_MEMORY"; break;
-		case GL_INVALID_FRAMEBUFFER_OPERATION:  error = "INVALID_FRAMEBUFFER_OPERATION"; break;
-		}
-
-		std::cout << error << " | " << file << " (" << line << ")" << std::endl;
-	}
-	return errorCode;
-}
-
-#define glCheckError() glCheckError_(__FILE__, __LINE__)
-
-
-void APIENTRY glDebugOutput(GLenum source, GLenum type, unsigned int id, GLenum severity,
-	GLsizei length, const char* message, const void* userParam)
-{
-	if (id == 131169 || id == 131185 || id == 131218 || id == 131204) return;
-
-	std::cout << "---------------" << std::endl;
-	std::cout << "Debug message (" << id << "): " << message << std::endl;
-
-	switch (source)
-	{
-	case GL_DEBUG_SOURCE_API:                 std::cout << "Source: API"; break;
-	case GL_DEBUG_SOURCE_WINDOW_SYSTEM:       std::cout << "Source: Window System"; break;
-	case GL_DEBUG_SOURCE_SHADER_COMPILER:     std::cout << "Source: Shader Compiler"; break;
-	case GL_DEBUG_SOURCE_THIRD_PARTY:         std::cout << "Source: Third Party"; break;
-	case GL_DEBUG_SOURCE_APPLICATION:         std::cout << "Source: Application"; break;
-	case GL_DEBUG_SOURCE_OTHER:               std::cout << "Source: Other"; break;
-	} std::cout << std::endl;
-
-	switch (type)
-	{
-	case GL_DEBUG_TYPE_ERROR:                 std::cout << "Type: Error"; break;
-	case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:   std::cout << "Type: Deprecated Behavior"; break;
-	case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:    std::cout << "Type: Undefined Behavior"; break;
-	case GL_DEBUG_TYPE_PORTABILITY:           std::cout << "Type: Portability"; break;
-	case GL_DEBUG_TYPE_PERFORMANCE:           std::cout << "Type: Performance"; break;
-	case GL_DEBUG_TYPE_MARKER:                std::cout << "Type: Marker"; break;
-	case GL_DEBUG_TYPE_PUSH_GROUP:            std::cout << "Type: Push Group"; break;
-	case GL_DEBUG_TYPE_POP_GROUP:             std::cout << "Type: Pop Group"; break;
-	case GL_DEBUG_TYPE_OTHER:                 std::cout << "Type: Other"; break;
-	} std::cout << std::endl;
-
-	switch (severity)
-	{
-	case GL_DEBUG_SEVERITY_HIGH:              std::cout << "Severity: High"; break;
-	case GL_DEBUG_SEVERITY_MEDIUM:            std::cout << "Severity: Medium"; break;
-	case GL_DEBUG_SEVERITY_LOW:               std::cout << "Severity: Low"; break;
-	case GL_DEBUG_SEVERITY_NOTIFICATION:      std::cout << "Severity: Notification"; break;
-	} std::cout << std::endl;
-
-	std::cout << std::endl;
-}
 
 
 void resizeFramebufferAttachments(int width, int height)
@@ -475,7 +408,6 @@ int main()
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, true);
-	glfwWindowHint(GLFW_SAMPLES, 4);
 
 	GLFWwindow* window = glfwCreateWindow(800, 600, "GraphicsPlayground", NULL, NULL);
 
@@ -500,14 +432,9 @@ int main()
 		return -1;
 	}
 
-	int flags; glGetIntegerv(GL_CONTEXT_FLAGS, &flags);
-	if (flags && GL_CONTEXT_FLAG_DEBUG_BIT)
-	{
-		glEnable(GL_DEBUG_OUTPUT);
-		glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-		glDebugMessageCallback(glDebugOutput, nullptr);
-		glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE);
-	}
+
+	EnableGLDebugOutput();
+
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -794,7 +721,6 @@ int main()
 		lightingShader.setFloat(s + "constant", 1.0f);
 		lightingShader.setFloat(s + "linear", 0.0f);
 		lightingShader.setFloat(s + "quadratic", 1.0f);
-
 	}
 
 

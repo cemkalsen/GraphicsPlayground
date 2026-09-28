@@ -21,6 +21,7 @@ add_subdirectory(external/assimp)
 add_executable(Renderer
     src/main.cpp
     src/stb_image.cpp
+    src/gl_debug.cpp
 
     # GLAD
     external/glad/src/glad.c
@@ -41,6 +42,7 @@ add_executable(Renderer
     src/camera.h
     src/mesh.h
     src/model.h
+    src/gl_debug.h
 )
 
 target_include_directories(Renderer PRIVATE

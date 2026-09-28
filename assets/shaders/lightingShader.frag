@@ -41,6 +41,9 @@ struct PointLight
     vec3 diffuse;
     vec3 specular;
 };
+
+
+// @TODO : Make this dynamic
 #define NR_POINT_LIGHTS 4  
 uniform PointLight pointLights[NR_POINT_LIGHTS];
 
