@@ -23,6 +23,7 @@ add_executable(Renderer
     src/stb_image.cpp
     src/gl_debug.cpp
     src/texture.cpp
+    src/framebuffer.cpp
 
     # GLAD
     external/glad/src/glad.c
@@ -45,6 +46,7 @@ add_executable(Renderer
     src/model.h
     src/gl_debug.h
     src/texture.h
+    src/framebuffer.h
 )
 
 target_include_directories(Renderer PRIVATE
