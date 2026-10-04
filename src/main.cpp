@@ -52,10 +52,9 @@ float speedMultiplier = 1.0f;
 
 float multiplier = 55.0f;
 
-unsigned int textureColorBuffer, textureColorBuffer2;
-unsigned int rbo, rbo2;
+unsigned int textureColorBuffer2;
+unsigned int rbo2;
 
-unsigned int msTextureColorbuffer, msrbo;
 
 float shine = 64.0f;
 glm::vec3 dirLightDirection = glm::vec3(0.0f, -1.0f, 0.0f);
@@ -66,25 +65,12 @@ glm::vec3 dirLightSpecular = glm::vec3(0.35f);
 float powerOfDirectional = 1.0f;
 
 
-
 void resizeFramebufferAttachments(int width, int height)
 {
 	if (!height || !width)
 	{
 		return;
 	}
-
-	glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGB, GL_FLOAT, nullptr);
-
-	glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, msTextureColorbuffer);
-	glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 4, GL_RGBA16F, width, height,GL_TRUE);
-
-	glBindRenderbuffer(GL_RENDERBUFFER, rbo);
-	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
-
-	glBindRenderbuffer(GL_RENDERBUFFER, msrbo);
-	glRenderbufferStorageMultisample(GL_RENDERBUFFER, 4, GL_DEPTH24_STENCIL8, width, height);
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
@@ -146,8 +132,6 @@ void processInput(GLFWwindow* window)
 	{
 		if (!escPressed)
 		{
-			//glfwSetWindowShouldClose(window, true);
-
 			bool disabled = glfwGetInputMode(window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED;
 			glfwSetInputMode(window, GLFW_CURSOR, (disabled ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED));
 			escPressed = true;
@@ -466,56 +450,13 @@ int main()
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)(0));
 
 
-		//  MSAA FRAMEBUFFER INITIALIZATION
+		int w, h;
+		glfwGetFramebufferSize(window, &w, &h);
 
-		unsigned int msFBO;
-		glGenFramebuffers(1, &msFBO);
-		glBindFramebuffer(GL_FRAMEBUFFER, msFBO);
+		Framebuffer screenMSAA({ .width = static_cast<unsigned int>(w) , .height = static_cast<unsigned int>(h), .samples = 4});
 
-		glGenTextures(1, &msTextureColorbuffer);
-		glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, msTextureColorbuffer);
-		glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 4, GL_RGBA16F, 800, 600, GL_TRUE);
-		glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, msTextureColorbuffer, 0);
+		Framebuffer resolve({ .width = static_cast<unsigned int>(w), .height = static_cast<unsigned int>(h), .hasColor = true, .depthAttachment = DepthAttachment::None});
 
-		glGenRenderbuffers(1, &msrbo);
-		glBindRenderbuffer(GL_RENDERBUFFER, msrbo);
-		glRenderbufferStorageMultisample(GL_RENDERBUFFER, 4, GL_DEPTH24_STENCIL8, 800, 600);
-		glBindRenderbuffer(GL_RENDERBUFFER, 0);
-
-		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, msrbo);
-
-		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-			std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
-
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-		// POST PROCESSING FRAMEBUFFER INITIALIZATION
-
-		unsigned int frameBuffer;
-		glGenFramebuffers(1, &frameBuffer);
-		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
-
-		glGenTextures(1, &textureColorBuffer);
-		glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 800, 600, 0, GL_RGB, GL_FLOAT, NULL);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glBindTexture(GL_TEXTURE_2D, 0);
-
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureColorBuffer, 0);
-
-		glGenRenderbuffers(1, &rbo);
-		glBindRenderbuffer(GL_RENDERBUFFER, rbo);
-		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, 800, 600);
-		glBindRenderbuffer(GL_RENDERBUFFER, 0);
-
-		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
-
-		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-			std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
-
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		// WINDOW FRAMEBUFFER INITIALIZATLION
 
@@ -654,6 +595,19 @@ int main()
 
 			glfwPollEvents();
 
+			// Resize framebuffers, i will move this to callback when setting the App, removed from the resize callback because i dont want globals
+
+			glfwGetFramebufferSize(window, &w, &h);
+
+			if (w == 0 || h == 0)
+			{
+				glfwWaitEvents();
+				continue;
+			}
+
+			screenMSAA.resize(w, h);
+			resolve.resize(w, h);
+
 			float currentFrame = glfwGetTime();
 			deltaTime = currentFrame - lastFrame;
 			lastFrame = currentFrame;
@@ -706,6 +660,7 @@ int main()
 
 			ImGui::End();
 
+
 			// SHADOW PASS
 			float near_plane = 1.0f, far_plane = 80.0f;
 			float originalSpeed = 2.5f;
@@ -727,7 +682,7 @@ int main()
 
 			RenderShadowPass(myResources, lightSpace);
 
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			Framebuffer::bindDefault(w, h);
 
 			// POST PROCESSING FRAMEBUFFER
 
@@ -744,12 +699,10 @@ int main()
 			glActiveTexture(GL_TEXTURE15);
 			glBindTexture(GL_TEXTURE_2D, shadowMap.getDepthTexture());
 
-			glBindFramebuffer(GL_FRAMEBUFFER, msFBO);
-			glViewport(0, 0, frameBufferWidth, frameBufferHeight);
-
+			screenMSAA.bind();
 
 			glm::mat4 view = camera.GetViewMatrix();
-			glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), static_cast<float>(frameBufferWidth) / static_cast<float>(frameBufferHeight), 0.1f, 500.0f);
+			glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), static_cast<float>(w) / static_cast<float>(h), 0.1f, 500.0f);
 			glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
 			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(projection));
 			glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(view));
@@ -787,12 +740,10 @@ int main()
 
 			// POST PROCESSING
 
-			glBindFramebuffer(GL_READ_FRAMEBUFFER, msFBO);
-			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, frameBuffer);
-			glBlitFramebuffer(0, 0, frameBufferWidth, frameBufferHeight, 0, 0, frameBufferWidth, frameBufferHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+			screenMSAA.resolveTo(resolve);
 
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			glViewport(0,0,frameBufferWidth,frameBufferHeight);
+			Framebuffer::bindDefault(w, h);
+
 			glClearColor(0.01f, 0.01f, 0.01f, 1.0f);
 			glClear(GL_COLOR_BUFFER_BIT);
 
@@ -804,8 +755,7 @@ int main()
 			glBindVertexArray(quadVAO);
 			glDisable(GL_DEPTH_TEST);
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, textureColorBuffer);
-			//glBindTexture(GL_TEXTURE_2D, depthMap);
+			glBindTexture(GL_TEXTURE_2D, resolve.getColorTexture());
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
@@ -813,7 +763,7 @@ int main()
 
 			if(mirrored)
 			{
-				glBindFramebuffer(GL_FRAMEBUFFER, 0);	
+				Framebuffer::bindDefault(w, h);
 
 				mirrorShader.use();
 				mirrorShader.setFloat("exposure", exposure);
