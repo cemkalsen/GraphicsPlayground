@@ -667,6 +667,11 @@ int main()
 				view = glm::lookAt(camera.Position, camera.Position + rearFront, rearUp);
 				projection = glm::perspective(glm::radians(camera.Zoom), static_cast<float>(MIRROR_WIDTH) / static_cast<float>(MIRROR_HEIGHT), 0.1f, 500.0f);
 
+				glBindBuffer(GL_UNIFORM_BUFFER, uboMatrices);
+				glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(projection));
+				glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(view));
+				glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
 				RenderScene(myResources, view, projection, camera.Position, lightSpace);
 			}
 
