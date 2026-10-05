@@ -31,9 +31,6 @@ float lastFrame = 0.0;
 float lastX = SCR_WIDTH / 2;
 float lastY = SCR_HEIGHT / 2;
 
-int frameBufferWidth = SCR_WIDTH;
-int frameBufferHeight = SCR_HEIGHT;
-
 Camera camera(glm::vec3(0.0f,0.0f,3.0f));
 
 bool firstMouse = true;
@@ -52,10 +49,6 @@ float speedMultiplier = 1.0f;
 
 float multiplier = 55.0f;
 
-unsigned int textureColorBuffer2;
-unsigned int rbo2;
-
-
 float shine = 64.0f;
 glm::vec3 dirLightDirection = glm::vec3(0.0f, -1.0f, 0.0f);
 glm::vec3 dirLightAmbient = glm::vec3(0.02f);
@@ -64,37 +57,6 @@ glm::vec3 dirLightSpecular = glm::vec3(0.35f);
 
 float powerOfDirectional = 1.0f;
 
-
-void resizeFramebufferAttachments(int width, int height)
-{
-	if (!height || !width)
-	{
-		return;
-	}
-
-	glBindTexture(GL_TEXTURE_2D, 0);
-	glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
-	glBindRenderbuffer(GL_RENDERBUFFER, 0);
-
-	glBindTexture(GL_TEXTURE_2D, textureColorBuffer2);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, MIRROR_WIDTH, MIRROR_HEIGHT, 0, GL_RGB, GL_FLOAT, nullptr);
-
-	glBindRenderbuffer(GL_RENDERBUFFER, rbo2);
-	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, MIRROR_WIDTH, MIRROR_HEIGHT);
-
-	glBindTexture(GL_TEXTURE_2D, 0);
-	glBindRenderbuffer(GL_RENDERBUFFER, 0);
-
-}
-
-void framebuffer_size_callback(GLFWwindow* window, int width, int height)
-{
-	frameBufferWidth = width;
-	frameBufferHeight = height;
-
-	glViewport(0, 0, width, height);
-	resizeFramebufferAttachments(width, height);
-}
 
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
@@ -315,7 +277,6 @@ int main()
 
 	glfwMakeContextCurrent(window);
 	glfwSwapInterval(0);
-	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
 	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	glfwSetCursorPosCallback(window, mouse_callback);
@@ -457,36 +418,7 @@ int main()
 
 		Framebuffer resolve({ .width = static_cast<unsigned int>(w), .height = static_cast<unsigned int>(h), .hasColor = true, .depthAttachment = DepthAttachment::None});
 
-
-		// WINDOW FRAMEBUFFER INITIALIZATLION
-
-		unsigned int frameBuffer2;
-		glGenFramebuffers(1, &frameBuffer2);
-		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer2);
-
-		glGenTextures(1, &textureColorBuffer2);
-		glBindTexture(GL_TEXTURE_2D, textureColorBuffer2);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 240, 180, 0, GL_RGB, GL_FLOAT, NULL);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glBindTexture(GL_TEXTURE_2D, 0);
-
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureColorBuffer2, 0);
-
-		glGenRenderbuffers(1, &rbo2);
-		glBindRenderbuffer(GL_RENDERBUFFER, rbo2);
-		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, 240, 180);
-		glBindRenderbuffer(GL_RENDERBUFFER, 0);
-
-		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo2);
-
-		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-			std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
-
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-		// SHADOW PASS FRAMEBUFFER INITIALIZATION
-
+		Framebuffer mirror({ .width = MIRROR_WIDTH, .height = MIRROR_HEIGHT });
 
 		Framebuffer shadowMap({ .width = SHADOW_WIDTH, .height = SHADOW_HEIGHT, .hasColor = false, .depthAttachment = DepthAttachment::Texture });
 
@@ -727,8 +659,8 @@ int main()
 
 			if (mirrored)
 			{
-				glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer2);
-				glViewport(0, 0, 240, 180);
+
+				mirror.bind();
 
 				glm::vec3 rearFront(-camera.Front.x, camera.Front.y, -camera.Front.z);
 				glm::vec3 rearUp(-camera.Up.x, camera.Up.y, -camera.Up.z);
@@ -770,7 +702,7 @@ int main()
 				glBindVertexArray(uiVAO);
 				glDisable(GL_DEPTH_TEST);
 				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, textureColorBuffer2);
+				glBindTexture(GL_TEXTURE_2D, mirror.getColorTexture());
 				glDrawArrays(GL_TRIANGLES, 0, 6);
 			}
 
